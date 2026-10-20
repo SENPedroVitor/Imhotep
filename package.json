@@ -1,9 +1,9 @@
 {
   "name": "imhotep",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Editor visual self-hosted com núcleo headless para agentes",
+  "description": "Editor visual self-hosted com n\u00facleo headless para agentes",
   "engines": {
     "node": ">=24"
   },
@@ -14,12 +14,19 @@
     "cli": "node src/cli/index.js",
     "mcp": "node src/mcp/index.js",
     "test:browser": "node scripts/verify-browser.mjs",
-    "start:tailscale": "node scripts/start-tailscale.mjs"
+    "start:tailscale": "node scripts/start-tailscale.mjs",
+    "test:workbench": "node scripts/verify-workbench.mjs",
+    "test:kendrick": "node scripts/verify-kendrick.mjs",
+    "test:kendrick:browser": "node scripts/verify-kendrick-browser.mjs"
   },
   "dependencies": {
+    "fontkit": "^2.0.4",
     "sharp": "^0.35.5"
   },
   "devDependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/manrope": "^5.3.0",
     "@playwright/test": "^1.56.0",
     "lucide-static": "^1.60.0",
     "prettier": "^3.9.10"

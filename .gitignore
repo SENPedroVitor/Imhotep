@@ -3,3 +3,4 @@ data/
 artifacts/
 .env
 *.sqlite*
+backups/

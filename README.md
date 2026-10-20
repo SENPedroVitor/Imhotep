@@ -1,6 +1,6 @@
 # Imhotep
 
-Editor visual self-hosted para pessoas e agentes. Primeiro incremento funcional, baseado nas telas em [`design/Imhotep.pen`](design/Imhotep.pen).
+Editor visual self-hosted para pessoas e agentes. Versão 0.2, baseado nas telas em [`design/Imhotep.pen`](design/Imhotep.pen).
 
 ## Executar no Linux
 
@@ -48,7 +48,10 @@ Execute os comandos a partir da raiz do repositório. O projeto Orbit é criado 
 ## O que funciona nesta versão
 
 - Criar e reabrir projetos persistidos no servidor.
-- Selecionar camadas, arrastar elementos, mover o canvas e alterar zoom.
+- Páginas, seleção múltipla por Shift, arraste, alças de tamanho, grupos, ordem e rotação.
+- Auto layout, componentes, variantes, tokens e recursos/fontes locais.
+- Prototipagem navegável e animações com timeline/keyframes.
+- Kendrick com propostas de edição por CLI de provedor e revisão antes de aplicar.
 - Adicionar frames, retângulos, elipses e texto.
 - Editar nomes, geometria, cores, borda, raio, opacidade e tipografia.
 - Desfazer/refazer edições da sessão e restaurar revisões preservando o histórico.
@@ -69,6 +72,9 @@ npm run cli -- inspect ID_DO_PROJETO
 npm run cli -- render ID_DO_PROJETO /tmp/frame.png
 npm run cli -- render ID_DO_PROJETO /tmp/frame.svg ID_DO_FRAME
 npm run cli -- history ID_DO_PROJETO
+npm run cli -- export ID_DO_PROJETO /tmp/prototipo.html
+npm run cli -- export ID_DO_PROJETO /tmp/Design.tsx
+npm run cli -- backup create
 npm run cli -- validate examples/orbit.json
 ```
 
@@ -112,9 +118,9 @@ Configure um servidor MCP **stdio** no agente usando um caminho absoluto, ajusta
 }
 ```
 
-O objeto externo da configuração varia conforme o cliente; `command`, `args` e `env` descrevem o processo a cadastrar. O adaptador implementa JSON-RPC por linhas em stdio e anuncia as ferramentas `list_projects`, `get_document_tree`, `get_revision_history`, `render_frame`, `apply_patch` e `restore_revision`. `render_frame` devolve texto SVG ou imagem PNG. Os clientes reais Claude Code/Codex/OpenCode ainda precisam de um teste individual de compatibilidade; o protocolo e as chamadas foram exercitados por subprocesso nos testes.
+O objeto externo da configuração varia conforme o cliente; `command`, `args` e `env` descrevem o processo a cadastrar. O adaptador implementa JSON-RPC por linhas em stdio e anuncia as ferramentas `list_projects`, `get_document_tree`, `get_revision_history`, `render_frame`, `apply_patch`, `restore_revision`, `list_pages`, `get_prototype_graph`, `get_animation_timeline` e `list_assets`. `render_frame` devolve texto SVG ou imagem PNG. Os clientes reais Claude Code/Codex/OpenCode ainda precisam de um teste individual de compatibilidade; o protocolo e as chamadas foram exercitados por subprocesso nos testes.
 
-O servidor HTTP precisa estar em execução. O agente pode operar com todos os navegadores fechados. O MCP não inicia agentes nem executa comandos enviados por documentos.
+O servidor HTTP precisa estar em execução. O agente pode operar com todos os navegadores fechados. O MCP permite operações estruturadas. Para conversar e solicitar propostas ao provedor, use o painel Kendrick no editor. O adaptador recebe o contexto e registra as sessões mesmo se o navegador for fechado.
 
 ## Dados, concorrência e acesso
 
@@ -122,7 +128,7 @@ O servidor HTTP precisa estar em execução. O agente pode operar com todos os n
 
 Esta versão é para **um workspace privado em um servidor confiável**. Os clientes locais com acesso à API podem acessar todos os projetos. Não há contas, isolamento por projeto ou autorização por agente ainda. O serviço valida Host e Origin, exige JSON nas gravações e não habilita CORS. Para usar outro número de porta no túnel, mantenha o mesmo número nos dois lados. No modo Tailscale, Host e Origin aceitam também o IPv4 privado detectado na mesma porta. Nomes de domínio adicionais não são aceitos automaticamente. HTTPS via Tailscale Serve pode ser configurado pelo administrador com `IMHOTEP_PUBLIC_ORIGIN` definido para a origem HTTPS exata; não é necessário para o acesso por IP documentado acima.
 
-Para fazer um backup consistente, pare o servidor e copie **todo o diretório de dados**. Para restaurar, mantenha o serviço parado, recoloque esse diretório e inicie novamente. Não copie somente o `.sqlite` enquanto o serviço estiver rodando: arquivos WAL podem conter gravações pendentes. Backups automáticos e restauração assistida ainda não foram implementados.
+O serviço cria backups SQLite online a cada seis horas em `backups/` (ou `IMHOTEP_BACKUP_DIR`). O painel Workspace cria, verifica e baixa backups manualmente. A restauração integral foi testada em outro diretório; veja [as instruções de recuperação](docs/RELEASE_0.2.md). Importar um JSON de projeto cria uma cópia independente.
 
 ## Verificação
 
@@ -135,12 +141,14 @@ npm audit
 
 Os testes de núcleo/API exercitam atomicidade, rejeição de conflito, idempotência, exclusão de subárvore, validação, restauração, persistência após reinício, SSE, exportação PNG e subprocessos CLI/MCP. O teste de navegador usa um banco temporário e cobre edição, arraste, atualização de agente ao vivo, reabertura, desfazer/refazer, exportação, preview, histórico, criação de canvas e reenvio idempotente após perda da resposta HTTP. Capturas são gravadas em `artifacts/`.
 
-## Escopo atual e próximos incrementos
+## Kendrick e modos do editor
 
-Esta entrega cobre o núcleo headless e um editor inicial conectado ao mesmo motor. A interface segue a organização e os tokens das telas aprovadas; ainda não implementa todas as telas do arquivo Pencil.
+Abra **Kendrick** na navegação lateral ou **Agentes** na barra superior. Escolha o provedor instalado e envie a solicitação. O modelo recebe o documento e a seleção; a resposta vira uma proposta validada. Revise o lote e clique em **Aplicar proposta**. Se o documento mudar nesse intervalo, a revisão esperada impede que a proposta sobrescreva edições recentes.
 
-Ainda faltam: múltiplas páginas por projeto, redimensionamento por alças, seleção múltipla, reordenação de camadas, auto layout, componentes e variantes, caminhos vetoriais editáveis, bibliotecas/fontes gerenciadas, protótipos interativos, timeline de motion, geração React e gerenciamento de sessões reais de agentes. O botão Motion fica desabilitado. Preview é visual; não simula interações de protótipo.
+Codex está instalado e foi testado com chamada real nesta instalação. Claude Code também está instalado, mas a conta atingiu a cota semanal; o erro é exibido no painel. OpenCode depende de instalação e login próprios. O processo usa a configuração de modelo do provedor, sem chaves embutidas no projeto.
 
-A extração do artboard Orbit é específica para este arquivo, não um importador geral de `.pen`. Efeitos, clipping, auto layout e outros recursos avançados do Pencil ainda não têm equivalência no modelo v1. Inter, Manrope e JetBrains Mono usam fallback se não estiverem instaladas no sistema; o navegador e o renderizador headless podem apresentar diferenças tipográficas. Os quatro PNGs ausentes continuam opcionais nesta versão. Os ícones do artboard usam uma cópia local do Lucide com licença em [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+O botão **Protótipo** cria conexões e abre o fluxo navegável. **Motion** edita keyframes em JSON, oferece scrub e reprodução. **Dev** exporta a composição visual React/SVG e o HTML com navegação/motion. **Workspace** gerencia páginas, importação de projeto e backups.
 
-Veja [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/DESIGN_MAP.md`](docs/DESIGN_MAP.md) e a visão de produto em [`docs/IMHOTEP_PROJETO.md`](docs/IMHOTEP_PROJETO.md).
+Consulte [o escopo, os limites e a validação da versão 0.2](docs/RELEASE_0.2.md). Os modos principais estão conectados ao motor, mas recursos avançados como alças Bézier, booleanos, layout responsivo e permissões multiusuário ainda não estão implementados.
+
+Veja também [arquitetura](docs/ARCHITECTURE.md), [mapa do design](docs/DESIGN_MAP.md) e [visão de produto](docs/IMHOTEP_PROJETO.md).

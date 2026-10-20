@@ -1,3 +1,7 @@
+import { outlineFonts } from "../core/fonts.js";
+import { Backups } from "../core/backups.js";
+import { Kendrick } from "../agents/kendrick.js";
+import { workspaceRoutes } from "./workspace.js";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -11,6 +15,7 @@ export async function startServer({
   port = Number(process.env.PORT || 4173),
   dataDir,
   tailscaleHost,
+  backupDir = process.env.IMHOTEP_BACKUP_DIR,
   seed = true,
   publicOrigin = process.env.IMHOTEP_PUBLIC_ORIGIN || "",
 } = {}) {
@@ -50,6 +55,19 @@ export async function startServer({
       null,
       JSON.parse(await readFile(resolve(root, "examples/orbit.json"), "utf8")),
     );
+  const kendrick = new Kendrick(store);
+  const backups = new Backups(
+    store,
+    backupDir || resolve(store.directory, "..", "backups"),
+  );
+  const backupTimer = setInterval(
+    () =>
+      backups
+        .create()
+        .catch((e) => console.error("Falha no backup:", e.message)),
+    6 * 60 * 60 * 1000,
+  );
+  backupTimer.unref();
   const clients = new Map();
   const broadcast = (event) => {
     for (const res of clients.get(event.projectId) ?? [])
@@ -114,13 +132,35 @@ export async function startServer({
           );
         }
       }
+      if (url.pathname === "/api/backups") {
+        if (req.method === "GET") return send(200, await backups.list());
+        if (req.method === "POST") return send(201, await backups.create());
+      }
+      if (url.pathname.startsWith("/api/backups/") && req.method === "GET")
+        return send(
+          200,
+          await backups.read(url.pathname.slice(13)),
+          "application/octet-stream",
+        );
+      if (
+        await workspaceRoutes({
+          url,
+          req,
+          send,
+          body,
+          store,
+          kendrick,
+          broadcast,
+        })
+      )
+        return;
       if (url.pathname === "/api/health" && req.method === "GET")
         return send(200, { status: "ok", schemaVersion: 1 });
       if (url.pathname === "/api/projects") {
         if (req.method === "GET") return send(200, store.list());
         if (req.method === "POST") {
           const b = await body();
-          return send(201, store.create(b.name));
+          return send(201, store.create(b.name, b.document));
         }
       }
       const match = url.pathname.match(
@@ -162,7 +202,7 @@ export async function startServer({
               "Frame não encontrado",
               404,
             );
-          const svg = renderSvg(project.document, frameId),
+          const svg = renderSvg(outlineFonts(project.document), frameId),
             format = url.searchParams.get("format") ?? "svg";
           assert(["svg", "png"].includes(format), "Formato não suportado");
           if (format === "png") {
@@ -203,17 +243,33 @@ export async function startServer({
           "/style.css": "style.css",
           "/renderer.js": "renderer.js",
           "/icons.js": "icons.js",
+          "/workbench.js": "workbench.js",
+          "/motion.js": "motion.js",
+          "/kendrick.svg": "kendrick.svg",
         };
-        const file = files[url.pathname];
+        const expression = url.pathname.match(
+          /^\/kendrick\/(idle|success|listening|thinking|attention|greeting|working|offline)\.svg$/,
+        );
+        const font = url.pathname.match(
+          /^\/fonts\/(Inter|Manrope|JetBrainsMono)\.woff2$/,
+        );
+        const file =
+          files[url.pathname] ||
+          (font ? `fonts/${font[1]}.woff2` : undefined) ||
+          (expression ? `kendrick/${expression[1]}.svg` : undefined);
         assert(file, "Rota não encontrada", 404);
         const type = file.endsWith(".js")
           ? "text/javascript"
           : file.endsWith(".css")
             ? "text/css"
-            : "text/html";
+            : file.endsWith(".woff2")
+              ? "font/woff2"
+              : file.endsWith(".svg")
+                ? "image/svg+xml"
+                : "text/html";
         res.setHeader(
           "Content-Security-Policy",
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
         );
         return send(200, await readFile(resolve(root, "public", file)), type);
       }
@@ -250,6 +306,9 @@ export async function startServer({
     store,
     port: server.address().port,
     close: async () => {
+      clearInterval(backupTimer);
+      await backups.close();
+      await kendrick.close();
       for (const group of clients.values()) for (const res of group) res.end();
       await Promise.all(
         [server, tailServer]

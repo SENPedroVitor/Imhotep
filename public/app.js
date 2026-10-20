@@ -1,9 +1,11 @@
+import { installWorkbench } from "./workbench.js";
 import {
   sceneMarkup,
   renderSvg,
   escapeXml as esc,
   position,
   bounds,
+  layoutDocument,
 } from "./renderer.js";
 const $ = (s) => document.querySelector(s),
   app = $("#app"),
@@ -87,6 +89,23 @@ const state = {
   drag: null,
   pan: false,
 };
+const workbench = installWorkbench({
+  state,
+  api,
+  commit,
+  selected,
+  select,
+  refresh,
+  renderScene,
+  renderInspector,
+  notice,
+  uuid,
+  dialog,
+  fit,
+  esc,
+  icon,
+  copyText,
+});
 let noticeTimer;
 function notice(message, error = false, persistent = false) {
   clearTimeout(noticeTimer);
@@ -116,7 +135,7 @@ async function api(path, body) {
   return data;
 }
 function topbar(editor = false) {
-  return `<header class="topbar"><button class="brand" data-action="home" title="Voltar aos canvases" aria-label="Voltar aos canvases"><span class="brand-mark">i</span><span class="brand-name">Imhotep</span></button><span class="divider"></span>${editor ? `<div class="project-name"><span class="muted">${icon("folder")}</span> ${esc(state.project.document.name)} ${icon("down")}</div><div class="mode-switch"><button data-action="design" class="${state.mode === "design" ? "active" : ""}">${icon("arrow")}Design</button><button data-action="dev" class="${state.mode === "dev" ? "active" : ""}">${icon("code")}Dev</button><button disabled title="Motion Studio previsto para uma próxima etapa">${icon("motion")}Motion</button><button data-action="agents" class="${state.mode === "agents" ? "active" : ""}">${icon("sparkles")}Agentes</button></div>` : '<span class="muted">Workspace local</span>'}<span class="spacer"></span><span class="save-state"><span class="status-dot ${state.online ? "" : "offline"}"></span><span id="save-label">${state.busy ? "Salvando…" : state.pending ? "Alteração pendente" : state.online ? "Salvo no servidor" : "Sem conexão"}</span></span>${ib("sun", "Alternar tema", "theme")}${editor ? `${ib("undo", "Desfazer · Ctrl+Z", "undo", !state.undo.length || state.busy)}${ib("redo", "Refazer · Ctrl+Shift+Z", "redo", !state.redo.length || state.busy)}${ib("history", "Histórico de revisões", "history")}<button class="primary" data-action="preview">${icon("play")} <span>Preview</span></button>` : '<span class="server-label muted">' + icon("server") + " &nbsp;Servidor local</span>"}</header>`;
+  return `<header class="topbar"><button class="brand" data-action="home" title="Voltar aos canvases" aria-label="Voltar aos canvases"><span class="brand-mark">i</span><span class="brand-name">Imhotep</span></button><span class="divider"></span>${editor ? `<div class="project-name"><span class="muted">${icon("folder")}</span> ${esc(state.project.document.name)} ${icon("down")}</div><div class="mode-switch"><button data-action="design" class="${state.mode === "design" ? "active" : ""}">${icon("arrow")}Design</button><button data-action="dev" class="${state.mode === "dev" ? "active" : ""}">${icon("code")}Dev</button><button data-action="motion">${icon("motion")}Motion</button><button data-action="agents" class="${state.mode === "agents" ? "active" : ""}">${icon("sparkles")}Agentes</button></div>` : '<span class="muted">Workspace local</span>'}<span class="spacer"></span><span class="save-state"><span class="status-dot ${state.online ? "" : "offline"}"></span><span id="save-label">${state.busy ? "Salvando…" : state.pending ? "Alteração pendente" : state.online ? "Salvo no servidor" : "Sem conexão"}</span></span>${ib("sun", "Alternar tema", "theme")}${editor ? `${ib("undo", "Desfazer · Ctrl+Z", "undo", !state.undo.length || state.busy)}${ib("redo", "Refazer · Ctrl+Shift+Z", "redo", !state.redo.length || state.busy)}${ib("history", "Histórico de revisões", "history")}<button class="primary" data-action="preview">${icon("play")} <span>Preview</span></button>` : '<span class="server-label muted">' + icon("server") + " &nbsp;Servidor local</span>"}</header>`;
 }
 function sidebarHome() {
   return `<aside class="sidebar"><div class="side-head">Workspace</div><div class="workspace-select">${icon("folder")}Studio local ${icon("down")}</div><nav class="side-nav"><button class="active" data-action="home">${icon("grid")}Canvases</button></nav><div class="side-foot">${icon("server")}Seus arquivos, no seu servidor.<br>Sem conta externa para criar.</div></aside>`;
@@ -132,7 +151,7 @@ async function home() {
 function renderHome() {
   app.innerHTML =
     topbar() +
-    `<main class="workspace">${sidebarHome()}<section class="home-content"><div class="home-heading"><div><h1>Canvases</h1><p>${state.projects.length} ${state.projects.length === 1 ? "canvas" : "canvases"} no seu workspace</p></div><button class="primary" data-action="new">${icon("plus")} &nbsp; Novo canvas</button></div><div class="home-filters"><span>Todos os canvases</span><input id="project-search" type="search" aria-label="Buscar canvas" placeholder="Buscar canvas…"></div><div class="project-grid" id="project-grid"></div><p class="local-caption">${icon("server")} Documentos persistidos localmente · Imhotep 0.1</p></section></main>`;
+    `<main class="workspace">${sidebarHome()}<section class="home-content"><div class="home-heading"><div><h1>Canvases</h1><p>${state.projects.length} ${state.projects.length === 1 ? "canvas" : "canvases"} no seu workspace</p></div><button class="primary" data-action="new">${icon("plus")} &nbsp; Novo canvas</button></div><div class="home-filters"><span>Todos os canvases</span><input id="project-search" type="search" aria-label="Buscar canvas" placeholder="Buscar canvas…"></div><div class="project-grid" id="project-grid"></div><p class="local-caption">${icon("server")} Documentos persistidos localmente · Imhotep 0.2</p></section></main>`;
   renderCards();
   $("#project-search").addEventListener("input", renderCards);
 }
@@ -152,6 +171,7 @@ async function openProject(projectId) {
   state.source?.close();
   state.project = await api(`/api/projects/${encodeURIComponent(projectId)}`);
   state.selected = null;
+  state.pageId = state.project.document.pages?.[0]?.id || "page-1";
   state.mode = "design";
   state.undo = [];
   state.redo = [];
@@ -238,6 +258,7 @@ function renderEditor() {
 }
 function refresh() {
   if (!state.project) return;
+  workbench.mount();
   if (!selected()) state.selected = null;
   renderLayers();
   renderScene();
@@ -267,7 +288,7 @@ function updateStatus() {
 }
 function renderLayers() {
   const query = $("#layer-search")?.value.toLowerCase() || "";
-  const doc = state.project.document;
+  const doc = workbench.visibleDocument();
   const ordered = [];
   function add(parent, depth) {
     for (const n of doc.nodes.filter((n) => (n.parentId || null) === parent)) {
@@ -288,14 +309,20 @@ function renderLayers() {
 }
 function renderScene() {
   if (!$("#scene")) return;
-  const doc = state.project.document;
-  $("#scene").innerHTML = sceneMarkup(doc);
+  const doc = workbench.visibleDocument();
+  $("#scene").innerHTML = sceneMarkup(doc) + workbench.connectionMarkup(doc);
   applyView();
   const n = selected();
-  $("#selection").innerHTML = n ? selectionMarkup(n) : "";
+  $("#selection").innerHTML = (state.selectedIds || [state.selected])
+    .map((id) => doc.nodes.find((n) => n.id === id))
+    .filter(Boolean)
+    .map(selectionMarkup)
+    .join("");
 }
 function selectionMarkup(n) {
-  const p = position(n, state.project.document.nodes),
+  if (!state.drag)
+    n = workbench.visibleDocument().nodes.find((v) => v.id === n.id) || n;
+  const p = position(n, workbench.visibleDocument().nodes),
     s = state.view.scale,
     handle = 5 / s;
   return (
@@ -308,7 +335,7 @@ function selectionMarkup(n) {
     ]
       .map(
         ([x, y]) =>
-          `<rect x="${x - handle / 2}" y="${y - handle / 2}" width="${handle}" height="${handle}" fill="#FFFFFF" stroke="#328BFF" stroke-width="${1 / s}"/>`,
+          `<rect data-resize="${x === p.x ? "w" : "e"}${y === p.y ? "n" : "s"}" pointer-events="all" x="${x - handle / 2}" y="${y - handle / 2}" width="${handle}" height="${handle}" fill="#FFFFFF" stroke="#328BFF" stroke-width="${1 / s}"/>`,
       )
       .join("")
   );
@@ -325,7 +352,7 @@ function applyView() {
 function fit() {
   const center = $(".editor-center");
   if (!center) return;
-  const b = bounds(state.project.document.nodes),
+  const b = bounds(workbench.visibleDocument().nodes),
     scale = Math.max(
       0.1,
       Math.min(
@@ -369,7 +396,12 @@ function wheel(e) {
     applyView();
   }
 }
-function select(nodeId) {
+function select(nodeId, add = false) {
+  state.selectedIds = add
+    ? [...new Set([...(state.selectedIds || []), nodeId])]
+    : nodeId
+      ? [nodeId]
+      : [];
   state.selected = nodeId;
   renderLayers();
   renderScene();
@@ -379,6 +411,19 @@ function pointerDown(e) {
   if (e.button !== 0 && e.button !== 1) return;
   const canvas = $("#canvas");
   canvas.setPointerCapture(e.pointerId);
+  const resize = e.target.closest("[data-resize]");
+  if (resize && selected()) {
+    state.drag = {
+      kind: "resize",
+      corner: resize.dataset.resize,
+      x: e.clientX,
+      y: e.clientY,
+      node: structuredClone(selected()),
+      revision: state.project.revision,
+      moved: false,
+    };
+    return;
+  }
   const target = e.target.closest("[data-node-id]");
   if (e.button === 1 || state.pan || e.altKey) {
     state.drag = {
@@ -393,7 +438,13 @@ function pointerDown(e) {
     select(null);
     return;
   }
-  select(target.dataset.nodeId);
+  if (
+    !e.shiftKey &&
+    (state.selectedIds || []).includes(target.dataset.nodeId)
+  ) {
+    state.selected = target.dataset.nodeId;
+    renderInspector();
+  } else select(target.dataset.nodeId, e.shiftKey);
   const n = selected();
   if (n)
     state.drag = {
@@ -401,6 +452,11 @@ function pointerDown(e) {
       x: e.clientX,
       y: e.clientY,
       node: structuredClone(n),
+      group: (state.selectedIds || [n.id])
+        .map((id) => state.project.document.nodes.find((n) => n.id === id))
+        .filter(Boolean)
+        .filter((v) => !(state.selectedIds || []).includes(v.parentId))
+        .map((v) => structuredClone(v)),
       revision: state.project.revision,
       moved: false,
     };
@@ -422,6 +478,30 @@ function pointerMove(e) {
     x: Math.round(drag.node.x + dx / state.view.scale),
     y: Math.round(drag.node.y + dy / state.view.scale),
   };
+  if (drag.kind === "resize") {
+    const w = drag.corner.includes("w"),
+      north = drag.corner.includes("n");
+    const width = Math.max(
+        8,
+        drag.node.width + (w ? -dx : dx) / state.view.scale,
+      ),
+      height = Math.max(
+        8,
+        drag.node.height + (north ? -dy : dy) / state.view.scale,
+      );
+    drag.next = {
+      x: w ? drag.node.x + drag.node.width - width : drag.node.x,
+      y: north ? drag.node.y + drag.node.height - height : drag.node.y,
+      width,
+      height,
+    };
+    const doc = workbench.visibleDocument();
+    const node = doc.nodes.find((n) => n.id === drag.node.id);
+    Object.assign(node, drag.next);
+    $("#scene").innerHTML = sceneMarkup(doc) + workbench.connectionMarkup(doc);
+    $("#selection").innerHTML = selectionMarkup({ ...drag.node, ...drag.next });
+    return;
+  }
   const group = $("#scene").querySelector(
     `[data-node-id="${CSS.escape(drag.node.id)}"]`,
   );
@@ -431,15 +511,24 @@ function pointerMove(e) {
 async function pointerUp() {
   const drag = state.drag;
   state.drag = null;
-  if (drag?.kind === "node" && drag.moved) {
+  if (["node", "resize"].includes(drag?.kind) && drag.moved) {
     if (drag.revision !== state.project.revision) {
       renderScene();
       notice("O canvas mudou. Selecione o elemento e tente novamente.", true);
       return;
     }
-    await commit([
-      { type: "update_node", id: drag.node.id, changes: drag.next },
-    ]);
+    const changes =
+      drag.kind === "resize"
+        ? [{ type: "update_node", id: drag.node.id, changes: drag.next }]
+        : (drag.group || [drag.node]).map((n) => ({
+            type: "update_node",
+            id: n.id,
+            changes: {
+              x: n.x + drag.next.x - drag.node.x,
+              y: n.y + drag.next.y - drag.node.y,
+            },
+          }));
+    await commit(changes);
   }
 }
 function property(key, label, value, type = "number") {
@@ -448,6 +537,7 @@ function property(key, label, value, type = "number") {
 function renderInspector() {
   const panel = $("#inspector");
   if (!panel) return;
+  if (workbench.renderInspector()) return;
   const n = selected();
   if (state.mode === "history") {
     renderHistory();
@@ -458,14 +548,15 @@ function renderInspector() {
     return;
   }
   if (state.mode === "dev") {
-    panel.innerHTML = `<div class="inspector-title"><strong>${icon("code")}Inspeção de código</strong><small>CSS da geometria e estilo selecionados</small></div>${n ? `<section class="inspector-section"><h3>${esc(n.name)}</h3><pre id="css-output">${esc(cssFor(n))}</pre><button class="text-button" data-action="copy-css">Copiar CSS</button></section>` : '<p class="inspector-empty">Selecione um elemento para inspecionar suas propriedades.</p>'}<section class="inspector-section"><h3>Exportar documento</h3><button class="text-button" data-action="export-svg">${icon("download")} SVG</button><button class="text-button" data-action="export-png">${icon("download")} PNG</button><button class="text-button" data-action="export-json">${icon("download")} JSON</button><p class="muted">Exportação visual do documento. Layout responsivo e interações não são gerados nesta versão.</p></section>`;
+    panel.innerHTML = `<div class="inspector-title"><strong>${icon("code")}Inspeção de código</strong><small>CSS da geometria e estilo selecionados</small></div>${n ? `<section class="inspector-section"><h3>${esc(n.name)}</h3><pre id="css-output">${esc(cssFor(n))}</pre><button class="text-button" data-action="copy-css">Copiar CSS</button></section>` : '<p class="inspector-empty">Selecione um elemento para inspecionar suas propriedades.</p>'}<section class="inspector-section"><h3>Exportar documento</h3><button class="text-button" data-action="export-svg">${icon("download")} SVG</button><button class="text-button" data-action="export-png">${icon("download")} PNG</button><button class="text-button" data-action="export-html">HTML / Motion</button><button class="text-button" data-action="export-react">React</button><button class="text-button" data-action="export-json">${icon("download")} JSON</button><p class="muted">Exportação visual do documento. Layout responsivo e interações não são gerados nesta versão.</p></section>`;
     return;
   }
   if (!n) {
     panel.innerHTML = `<div class="inspector-title"><strong>Design</strong><small>Página 1</small></div><p class="inspector-empty">Selecione uma camada para editar sua posição, tamanho e estilo.<br><br>Use a barra inferior para adicionar formas, frames e texto.</p><section class="inspector-section"><h3>Atalhos</h3><p class="muted">V · selecionar<br>H · mover canvas<br>R · retângulo<br>O · elipse<br>T · texto<br>F · frame<br>Shift+1 · ajustar<br>Ctrl+Z · desfazer</p></section>`;
     return;
   }
-  panel.innerHTML = `<div class="inspector-title"><strong>${icon(n.type === "text" ? "text" : "component")}<input data-property="name" aria-label="Nome do elemento" value="${esc(n.name)}"></strong><small>${n.type === "frame" ? "Frame" : n.type === "text" ? "Texto" : n.type === "ellipse" ? "Elipse" : n.type === "icon" ? "Ícone" : "Retângulo"} · ${esc(n.id.slice(0, 12))}</small></div><section class="inspector-section"><h3>Layout</h3><div class="property-grid">${property("x", "X", n.x)}${property("y", "Y", n.y)}${property("width", "W", n.width)}${property("height", "H", n.height)}${property("radius", "Raio", n.radius ?? 0)}${property("opacity", "α", n.opacity ?? 1)}</div></section><section class="inspector-section"><h3>Estilo</h3><div class="color-field"><input type="color" data-property="fill" aria-label="Cor de preenchimento" value="${/^#[0-9a-f]{6}$/i.test(n.fill) ? n.fill : "#FFFFFF"}"><input type="text" data-property="fill" aria-label="Preenchimento hexadecimal" value="${esc(n.fill ?? "#FFFFFF")}"></div><div class="property-grid" style="margin-top:16px">${property("stroke", "Borda", n.stroke ?? "none", "text")}${property("strokeWidth", "px", n.strokeWidth ?? 0)}</div></section>${n.type === "text" ? `<section class="inspector-section"><h3>Tipografia</h3><textarea id="node-text" data-property="text" aria-label="Conteúdo do texto">${esc(n.text ?? "")}</textarea><select data-property="fontFamily" aria-label="Família da fonte">${["Inter", "Manrope", "JetBrains Mono", "sans-serif", "monospace"].map((f) => `<option ${n.fontFamily === f ? "selected" : ""}>${f}</option>`).join("")}</select><div class="property-grid">${property("fontSize", "Tamanho", n.fontSize ?? 16)}<label class="field"><span>Peso</span><select data-property="fontWeight" aria-label="Peso da fonte">${[400, 500, 600, 700].map((w) => `<option ${n.fontWeight === w ? "selected" : ""}>${w}</option>`).join("")}</select></label></div></section>` : ""}<section class="inspector-section"><button class="danger-button" data-action="delete">${icon("trash")} Excluir elemento</button></section><div class="inspector-foot">Alterações salvas no servidor</div>`;
+  panel.innerHTML = `<div class="inspector-title"><strong>${icon(n.type === "text" ? "text" : "component")}<input data-property="name" aria-label="Nome do elemento" value="${esc(n.name)}"></strong><small>${n.type === "frame" ? "Frame" : n.type === "text" ? "Texto" : n.type === "ellipse" ? "Elipse" : n.type === "icon" ? "Ícone" : "Retângulo"} · ${esc(n.id.slice(0, 12))}</small></div><section class="inspector-section"><h3>Layout</h3><div class="property-grid">${property("x", "X", n.x)}${property("y", "Y", n.y)}${property("width", "W", n.width)}${property("height", "H", n.height)}${property("radius", "Raio", n.radius ?? 0)}${property("opacity", "α", n.opacity ?? 1)}</div></section><section class="inspector-section"><h3>Estilo</h3><div class="color-field"><input type="color" data-property="fill" aria-label="Cor de preenchimento" value="${/^#[0-9a-f]{6}$/i.test(n.fill) ? n.fill : "#FFFFFF"}"><input type="text" data-property="fill" aria-label="Preenchimento hexadecimal" value="${esc(n.fill ?? "#FFFFFF")}"></div><div class="property-grid" style="margin-top:16px">${property("stroke", "Borda", n.stroke ?? "none", "text")}${property("strokeWidth", "px", n.strokeWidth ?? 0)}</div></section>${n.type === "text" ? `<section class="inspector-section"><h3>Tipografia</h3><textarea id="node-text" data-property="text" aria-label="Conteúdo do texto">${esc(n.text ?? "")}</textarea><select data-property="fontFamily" aria-label="Família da fonte">${["Inter", "Manrope", "JetBrains Mono", "sans-serif", "monospace", ...(state.project.document.fonts || []).map((f) => f.id)].map((f) => `<option ${n.fontFamily === f ? "selected" : ""}>${f}</option>`).join("")}</select><div class="property-grid">${property("fontSize", "Tamanho", n.fontSize ?? 16)}<label class="field"><span>Peso</span><select data-property="fontWeight" aria-label="Peso da fonte">${[400, 500, 600, 700].map((w) => `<option ${n.fontWeight === w ? "selected" : ""}>${w}</option>`).join("")}</select></label></div></section>` : ""}<section class="inspector-section"><button class="danger-button" data-action="delete">${icon("trash")} Excluir elemento</button></section><div class="inspector-foot">Alterações salvas no servidor</div>`;
+  workbench.decorateInspector(panel, n);
   panel.querySelectorAll("[data-property]").forEach((input) =>
     input.addEventListener("change", () => {
       const key = input.dataset.property;
@@ -572,13 +663,14 @@ async function commit(
   }
 }
 async function addNode(type) {
-  const doc = state.project.document;
+  const doc = workbench.visibleDocument();
   const root = doc.nodes.find((n) => n.type === "frame" && !n.parentId);
   const uid = uuid();
   const parent = type === "frame" ? null : root;
   const n = {
     id: uid,
     type,
+    pageId: state.pageId,
     name: {
       frame: "Frame",
       rectangle: "Retângulo",
@@ -631,6 +723,10 @@ function newProject() {
   });
 }
 function preview() {
+  if (state.project.document.interactions?.length) {
+    workbench.act("play-prototype");
+    return;
+  }
   dialog.className = "preview-dialog";
   dialog.innerHTML = `<footer><span>${esc(state.project.document.name)} <span class="muted">· prévia visual</span></span><button class="icon-button" data-action="close-dialog" aria-label="Fechar prévia">${icon("close")}</button></footer><div class="preview-content">${renderSvg(state.project.document)}</div>`;
   dialog.showModal();
@@ -692,7 +788,10 @@ async function action(name) {
     return;
   }
   if (!state.project) return;
+  if (await workbench.act(name)) return;
   if (["design", "dev", "agents", "history"].includes(name)) {
+    workbench.stopMotion();
+    renderScene();
     state.mode = name;
     app
       .querySelectorAll(".mode-switch button")
@@ -737,7 +836,7 @@ document.addEventListener("click", async (e) => {
   try {
     if (target.dataset.project)
       return await openProject(target.dataset.project);
-    if (target.dataset.select) return select(target.dataset.select);
+    if (target.dataset.select) return select(target.dataset.select, e.shiftKey);
     if (target.dataset.restore !== undefined) {
       const revision = Number(target.dataset.restore);
       dialog.className = "";

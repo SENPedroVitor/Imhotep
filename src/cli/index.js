@@ -39,7 +39,25 @@ try {
         author: process.env.IMHOTEP_AUTHOR || "cli",
       },
     );
-  } else if (command === "render") {
+  } else if (command === "export") {
+    const output = args[0];
+    if (!output || !/[.](html|tsx)$/.test(output))
+      throw new Error("Informe destino .html ou .tsx");
+    const response = await fetch(
+      `${baseUrl()}/api/projects/${encodeURIComponent(projectId)}/${output.endsWith(".tsx") ? "code?format=react" : "prototype"}`,
+    );
+    if (!response.ok) throw new Error((await response.json()).error);
+    await writeFile(output, await response.text());
+    result = { output };
+  } else if (command === "backup" && projectId === "create")
+    result = await request("/api/backups", {});
+  else if (command === "timeline")
+    result = (await request(`/api/projects/${encodeURIComponent(projectId)}`))
+      .document.animations;
+  else if (command === "prototype")
+    result = (await request(`/api/projects/${encodeURIComponent(projectId)}`))
+      .document.interactions;
+  else if (command === "render") {
     const output = args[0];
     if (!output || !/\.(png|svg)$/.test(output))
       throw new Error("Informe destino .png ou .svg");

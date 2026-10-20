@@ -48,3 +48,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ```
+
+
+As fontes locais Inter, Manrope e JetBrains Mono são distribuídas sob SIL Open Font License. As licenças e seus avisos de autoria estão em `public/fonts/*-LICENSE.txt`.

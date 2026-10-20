@@ -25,7 +25,7 @@
 
 ## Contrato v1
 
-Documento: `{schemaVersion: 1, name, nodes: []}`. Cada nó tem `id`, `type`, `name`, `x`, `y`, `width`, `height`, estilo e, opcionalmente, `parentId`. A posição é local ao pai. Tipos atuais: `frame`, `rectangle`, `ellipse`, `text` e `icon` de catálogo local. Apenas frames podem ter filhos. Cada projeto contém uma única página neste incremento.
+Documento: `{schemaVersion: 1, name, nodes: []}`. Cada nó tem `id`, `type`, `name`, `x`, `y`, `width`, `height`, estilo e, opcionalmente, `parentId`. A posição é local ao pai. Tipos atuais: `frame`, `rectangle`, `ellipse`, `text`, `icon`, `path` e `image`. Apenas frames podem ter filhos. O documento contém páginas, interações, animações, tokens e fontes; nós informam sua página.
 
 A API aceita até 2 MB por pedido, 200 operações por lote e 2000 nós por documento. Os valores geométricos são limitados; cores aceitam hex ou `none`, e fontes pertencem a uma lista explícita. Não são aceitos campos de script, HTML ou URLs em propriedades de estilo. Texto é escapado no SVG. O banco guarda autoria declarada pelo cliente; ela ainda não representa uma identidade autenticada.
 
@@ -57,3 +57,9 @@ O adapter MCP tem compatibilidade inicial por protocolo; autorização granular,
 `npm run start:tailscale` consulta o estado local do Tailscale, exige conexão ativa e adiciona um listener no IPv4 detectado em `100.64.0.0/10`. O listener local é preservado para CLI/MCP. Ambos compartilham o motor e as conexões SSE. Host/Origin continuam com lista explícita; não se aceita `X-Forwarded-Host` como autorização. Não há bind em `0.0.0.0`. A inicialização falha se a interface não puder ser aberta. O comando não altera ACLs nem configurações do Tailscale.
 
 A interface suporta HTTP privado: quando `crypto.randomUUID` ou a API de clipboard não estão disponíveis, usa `crypto.getRandomValues` para UUID v4 e cópia compatível com o navegador. O tráfego entre dispositivos segue pela rede Tailscale. Um proxy HTTPS opcional pode ser autorizado por `IMHOTEP_PUBLIC_ORIGIN`, sem curingas.
+
+## Extensões 0.2
+
+O motor de features valida páginas, tokens/bindings, componentes/variantes, interações, animações e fontes. O banco mantém compatibilidade com documentos anteriores: os campos opcionais recebem defaults ao abrir. O núcleo de documento continua com schemaVersion 1, com extensões compatíveis opcionais; clientes antigos devem atualizar para preservar os campos. Sessões do Kendrick ficam em uma tabela separada e operações aprovadas entram no mesmo histórico transacional. Reinício marca sessões em execução como interrompidas; não há reenvio automático a provedores. O runtime exportado reutiliza renderer/motion e incorpora os dados para navegação offline.
+
+Backups usam a API online do SQLite e verificam integridade antes de apresentar sucesso. Não há rotação automática. As fontes importadas são validadas com Fontkit, persistidas no documento e convertidas em paths nas exportações. Consulte RELEASE_0.2.md para limites de cada recurso.

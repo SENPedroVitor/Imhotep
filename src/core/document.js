@@ -1,3 +1,8 @@
+import {
+  validateFeatures,
+  applyFeature,
+  maintainFeatures,
+} from "./features.js";
 import { icons } from "../../public/icons.js";
 import { randomUUID } from "node:crypto";
 export class AppError extends Error {
@@ -29,8 +34,30 @@ export const nodeKeys = [
   "fontFamily",
   "fontWeight",
   "icon",
+  "pageId",
+  "rotation",
+  "pathData",
+  "src",
+  "layout",
+  "gap",
+  "padding",
+  "componentId",
+  "componentMain",
+  "componentSetId",
+  "sourceId",
+  "variant",
+  "tokenBindings",
+  "instanceOverrides",
 ];
-const types = ["frame", "rectangle", "ellipse", "text", "icon"];
+const types = [
+  "frame",
+  "rectangle",
+  "ellipse",
+  "text",
+  "icon",
+  "path",
+  "image",
+];
 const color = /^(#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})|none)$/i;
 export function validateDocument(doc) {
   assert(doc && doc.schemaVersion === 1, "Versão de documento inválida");
@@ -98,7 +125,8 @@ export function validateDocument(doc) {
           "JetBrains Mono",
           "sans-serif",
           "monospace",
-        ].includes(n.fontFamily),
+        ].includes(n.fontFamily) ||
+          (doc.fonts || []).some((f) => f.id === n.fontFamily),
         "Fonte não suportada",
       );
     if (n.fontWeight !== undefined)
@@ -117,7 +145,7 @@ export function validateDocument(doc) {
       p = map.get(p).parentId;
     }
   }
-  return doc;
+  return validateFeatures(doc);
 }
 export function applyOperations(document, operations) {
   assert(
@@ -134,7 +162,7 @@ export function applyOperations(document, operations) {
         op.node && !doc.nodes.some((n) => n.id === op.node.id),
         "ID já existe",
       );
-      doc.nodes.push(op.node);
+      doc.nodes.push(structuredClone(op.node));
     } else if (op.type === "update_node") {
       const n = doc.nodes.find((n) => n.id === op.id);
       assert(n, "Elemento não encontrado", 404);
@@ -146,6 +174,36 @@ export function applyOperations(document, operations) {
         "Alteração inválida",
       );
       Object.assign(n, op.changes);
+      if (n.sourceId && !n.componentMain)
+        n.instanceOverrides = [
+          ...new Set([
+            ...(n.instanceOverrides || []),
+            ...Object.keys(op.changes),
+          ]),
+        ];
+      for (const instance of doc.nodes.filter(
+        (v) => v.sourceId === n.id && !v.componentMain,
+      )) {
+        for (const [key, value] of Object.entries(op.changes)) {
+          if (
+            [
+              "id",
+              "type",
+              "pageId",
+              "parentId",
+              "componentId",
+              "componentMain",
+              "componentSetId",
+              "sourceId",
+              "instanceOverrides",
+            ].includes(key) ||
+            (n.componentMain && ["x", "y", "name"].includes(key)) ||
+            (instance.instanceOverrides || []).includes(key)
+          )
+            continue;
+          instance[key] = structuredClone(value);
+        }
+      }
     } else if (op.type === "delete_node") {
       assert(
         doc.nodes.some((n) => n.id === op.id),
@@ -162,9 +220,14 @@ export function applyOperations(document, operations) {
       doc.nodes = doc.nodes.filter((n) => !deleted.has(n.id));
     } else if (op.type === "rename_project") {
       doc.name = op.name;
-    } else throw new AppError("Operação não suportada");
+    } else if (!applyFeature(doc, op))
+      throw new AppError("Operação não suportada");
   }
-  return validateDocument(doc);
+  return validateDocument(
+    operations.some((op) => op.type === "delete_node")
+      ? maintainFeatures(doc)
+      : doc,
+  );
 }
 export function blankDocument(name) {
   return validateDocument({

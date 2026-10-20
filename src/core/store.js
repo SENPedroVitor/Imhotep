@@ -12,6 +12,7 @@ import {
 } from "./document.js";
 export class Store {
   constructor(directory = process.env.IMHOTEP_DATA_DIR || "./data") {
+    this.directory = resolve(directory);
     const path = resolve(directory, "imhotep.sqlite");
     mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
@@ -39,7 +40,7 @@ export class Store {
       .prepare("SELECT * FROM projects WHERE id=?")
       .get(projectId);
     assert(row, "Projeto não encontrado", 404);
-    return { ...row, document: JSON.parse(row.document) };
+    return { ...row, document: validateDocument(JSON.parse(row.document)) };
   }
   create(name, document) {
     const doc = validateDocument(document ?? blankDocument(name));
