@@ -5,13 +5,15 @@ export function ease(t, type) {
     return t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
   return t;
 }
-export function evaluateMotion(document, time) {
+export function evaluateMotion(document, time, animationTimes) {
   const doc = structuredClone(document);
   for (const animation of doc.animations || []) {
+    const elapsed = animationTimes ? animationTimes[animation.id] : time;
+    if (elapsed === undefined) continue;
     const n = doc.nodes.find((n) => n.id === animation.nodeId);
     if (!n) continue;
     const frames = animation.keyframes;
-    const t = Math.max(0, Math.min(animation.duration, time));
+    const t = Math.max(0, Math.min(animation.duration, elapsed));
     const props = new Set(frames.flatMap((f) => Object.keys(f.values)));
     for (const key of props) {
       const points = frames.filter((f) => key in f.values);

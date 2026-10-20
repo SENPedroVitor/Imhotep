@@ -7,6 +7,53 @@ const projectSchema = {
   description: "ID do projeto autorizado neste servidor local",
 };
 const tools = [
+  {
+    name: "create_project",
+    description:
+      "Cria um projeto persistido no Imhotep a pedido do usuário; devolve ID, revisão e documento.",
+    inputSchema: {
+      type: "object",
+      properties: { name: { type: "string" }, document: { type: "object" } },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "get_selection",
+    description:
+      "Obtém a seleção real das abas ativas, com página, nós e horário. Ausência de clientes significa que não há seleção ativa; não invente contexto.",
+    inputSchema: {
+      type: "object",
+      properties: { projectId: projectSchema },
+      required: ["projectId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "get_node",
+    description:
+      "Consulta um nó e seus filhos diretos no documento persistido.",
+    inputSchema: {
+      type: "object",
+      properties: { projectId: projectSchema, nodeId: { type: "string" } },
+      required: ["projectId", "nodeId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "export_code",
+    description:
+      "Exporta protótipo HTML navegável com motion ou componente React visual SVG. HTML inclui apenas comportamentos suportados; React é visual estático.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: projectSchema,
+        format: { type: "string", enum: ["html", "react"] },
+      },
+      required: ["projectId", "format"],
+      additionalProperties: false,
+    },
+  },
   ...[
     "list_pages",
     "get_prototype_graph",
@@ -74,7 +121,7 @@ const tools = [
   {
     name: "apply_patch",
     description:
-      "Aplica lote transacional. Exige revisão atual, autoria e ID idempotente. Operações: create_node {node}, update_node {id,changes}, delete_node {id}, rename_project {name}, set_project_data {field:pages|tokens|interactions|animations|fonts,value}, create_component {id}, instantiate_component {componentId,id,pageId,x,y}, reorder_node {id,index}, rename_page {id,name}, delete_page {id}.",
+      "Aplica lote transacional. Exige revisão atual, autoria e ID idempotente. Operações: create_node {node}, update_node {id,changes}, delete_node {id}, rename_project {name}, set_project_data {field:pages|tokens|interactions|animations|fonts|flows,value}, create_component {id}, instantiate_component {componentId,id,pageId,x,y}, reorder_node {id,index}, rename_page {id,name}, delete_page {id}.",
     inputSchema: {
       type: "object",
       properties: {
@@ -133,6 +180,52 @@ async function call(name, args) {
     if (!(k in tool.inputSchema.properties))
       throw new Error(`Argumento inválido: ${k}`);
   const path = `/api/projects/${encodeURIComponent(args.projectId)}`;
+  if (name === "create_project")
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(await request("/api/projects", args)),
+        },
+      ],
+    };
+  if (name === "get_selection")
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(await request(`${path}/selection`)),
+        },
+      ],
+    };
+  if (name === "get_node") {
+    const project = await request(path),
+      node = project.document.nodes.find((n) => n.id === args.nodeId);
+    if (!node) throw new Error("Nó não encontrado");
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            revision: project.revision,
+            node,
+            children: project.document.nodes.filter(
+              (n) => n.parentId === node.id,
+            ),
+          }),
+        },
+      ],
+    };
+  }
+  if (name === "export_code") {
+    if (!["html", "react"].includes(args.format))
+      throw new Error("Formato inválido");
+    const response = await fetch(
+      `${baseUrl()}${path}/${args.format === "react" ? "code?format=react" : "prototype"}`,
+    );
+    if (!response.ok) throw new Error((await response.json()).error);
+    return { content: [{ type: "text", text: await response.text() }] };
+  }
   if (name === "list_projects")
     return {
       content: [
@@ -169,7 +262,7 @@ async function call(name, args) {
       name === "list_pages"
         ? document.pages
         : name === "get_prototype_graph"
-          ? document.interactions
+          ? { flows: document.flows, interactions: document.interactions }
           : name === "get_animation_timeline"
             ? document.animations
             : {
@@ -209,7 +302,7 @@ for await (const line of lines) {
           ? version
           : "2025-06-18",
         capabilities: { tools: {} },
-        serverInfo: { name: "imhotep", version: "0.1.0" },
+        serverInfo: { name: "imhotep", version: "0.3.0" },
       };
     } else if (msg.method === "ping") result = {};
     else if (msg.method === "tools/list") result = { tools };

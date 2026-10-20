@@ -1,9 +1,9 @@
 {
   "name": "imhotep",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Editor visual self-hosted com n\u00facleo headless para agentes",
+  "description": "Editor visual self-hosted com núcleo headless para agentes",
   "engines": {
     "node": ">=24"
   },
@@ -19,7 +19,11 @@
     "test:kendrick": "node scripts/verify-kendrick.mjs",
     "test:kendrick:browser": "node scripts/verify-kendrick-browser.mjs",
     "test:interface": "node scripts/verify-interface.mjs",
-    "test:persona": "node scripts/verify-persona.mjs"
+    "test:persona": "node scripts/verify-persona.mjs",
+    "test:flows": "node scripts/verify-flows.mjs",
+    "test:wendler": "node scripts/verify-wendler.mjs",
+    "connect:wendler": "node scripts/connect-wendler.mjs",
+    "service:install": "node scripts/install-service.mjs"
   },
   "dependencies": {
     "fontkit": "^2.0.4",

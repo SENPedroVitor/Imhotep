@@ -2,6 +2,8 @@ import { outlineFonts } from "../core/fonts.js";
 import { Backups } from "../core/backups.js";
 import { Kendrick } from "../agents/kendrick.js";
 import { workspaceRoutes } from "./workspace.js";
+import { Presence } from "./presence.js";
+import { wendlerStatus } from "./wendler.js";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -69,6 +71,7 @@ export async function startServer({
   );
   backupTimer.unref();
   const clients = new Map();
+  const presence = new Presence();
   const broadcast = (event) => {
     for (const res of clients.get(event.projectId) ?? [])
       res.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -135,6 +138,18 @@ export async function startServer({
       if (url.pathname === "/api/backups") {
         if (req.method === "GET") return send(200, await backups.list());
         if (req.method === "POST") return send(201, await backups.create());
+      }
+      if (url.pathname === "/api/integrations/wendler" && req.method === "GET")
+        return send(200, await wendlerStatus(store.directory));
+      const selection = url.pathname.match(
+        /^\/api\/projects\/([\w-]+)\/selection$/,
+      );
+      if (selection) {
+        const project = store.get(selection[1]);
+        if (req.method === "GET")
+          return send(200, { clients: presence.list(project) });
+        if (req.method === "POST")
+          return send(200, presence.update(project, await body()));
       }
       if (url.pathname.startsWith("/api/backups/") && req.method === "GET")
         return send(

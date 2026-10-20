@@ -30,6 +30,36 @@ export function installWorkbench(c) {
     feedbackUntil = 0,
     feedbackTimer = null;
   const drafts = new Map();
+  const presenceId = uuid();
+  let presenceKey = "",
+    presenceSentAt = 0,
+    presenceTimer;
+  function publishPresence() {
+    if (!state.project || document.hidden) return;
+    const projectId = state.project.id;
+    const pageId = state.pageId || pages()[0].id;
+    const nodeIds = (
+      state.selectedIds || (state.selected ? [state.selected] : [])
+    ).filter((id) =>
+      current().nodes.some((n) => n.id === id && n.pageId === pageId),
+    );
+    const key = JSON.stringify({ projectId, pageId, nodeIds });
+    if (key === presenceKey && Date.now() - presenceSentAt < 30000) return;
+    presenceKey = key;
+    presenceSentAt = Date.now();
+    clearTimeout(presenceTimer);
+    presenceTimer = setTimeout(
+      () =>
+        api(`/api/projects/${projectId}/selection`, {
+          clientId: presenceId,
+          pageId,
+          nodeIds,
+        }).catch(() => {
+          presenceSentAt = 0;
+        }),
+      100,
+    );
+  }
   const current = () => state.project?.document;
   const button = (name, text) =>
     `<button class="text-button" data-work="${name}">${text}</button>`;
@@ -65,6 +95,7 @@ export function installWorkbench(c) {
     if (pill && !document.querySelector("#page-select"))
       pill.innerHTML = `<select id="page-select" aria-label="Página ativa"></select><button data-work="new-page" title="Nova página">+</button>`;
     updatePages();
+    publishPresence();
     if (chatProject !== state.project.id) {
       chatProject = state.project.id;
       sessions = [];
@@ -79,7 +110,7 @@ export function installWorkbench(c) {
     if (foot && !document.querySelector(".work-nav"))
       foot.insertAdjacentHTML(
         "beforebegin",
-        `<nav class="work-nav">${button("settings", "Workspace")}${button("prototype", "Protótipo")}${button("components", "Componentes")}${button("resources", "Recursos")}${button("tokens", "Tokens")}${button("vector", "Vetor")}${button("agents", "Kendrick")}</nav>`,
+        `<nav class="work-nav">${button("settings", "Workspace")}${button("prototype", "Protótipo")}${button("components", "Componentes")}${button("resources", "Recursos")}${button("tokens", "Tokens")}${button("vector", "Vetor")}${button("agents", "Kendrick")}${button("wendler", "Wendler")}</nav>`,
       );
     if (!timer)
       timer = setInterval(() => {
@@ -88,6 +119,7 @@ export function installWorkbench(c) {
           timer = null;
           return;
         }
+        publishPresence();
         if (
           !loading &&
           (state.mode === "agents" ||
@@ -281,11 +313,81 @@ export function installWorkbench(c) {
             .reverse()
             .map(
               (s) =>
-                `<article class="chat-exchange"><div class="chat-user-message">${esc(s.prompt)}</div><div class="chat-answer"><span class="chat-answer-author">Kendrick <small>${esc(s.provider)}</small></span>${s.message ? `<p>${esc(s.message)}</p>` : s.status === "thinking" || s.status === "queued" ? '<div class="thinking-dots" aria-label="Preparando resposta"><i></i><i></i><i></i></div>' : ""}${s.error ? `<p class="work-error">${esc(s.error)}</p>` : ""}${s.operations?.length ? `<details class="proposal-details"><summary><span class="proposal-tag">PROPOSTA</span>${s.operations.length} ${s.operations.length === 1 ? "alteração" : "alterações"} no canvas</summary><pre>${esc(JSON.stringify(s.operations, null, 2))}</pre></details>` : ""}${s.status === "proposed" ? `<div class="proposal-actions"><button class="primary" data-session="${s.id}" data-command="apply">Aplicar proposta</button><button class="text-button" data-session="${s.id}" data-command="cancel">Descartar</button></div>` : s.status === "applied" ? '<span class="proposal-applied">✓ Aplicada no canvas</span>' : ["queued", "thinking"].includes(s.status) ? `<button class="text-button" data-session="${s.id}" data-command="cancel">Cancelar sessão</button>` : ""}</div></article>`,
+                `<article class="chat-exchange"><div class="chat-user-message">${esc(s.prompt)}</div><div class="chat-answer"><span class="chat-answer-author">Kendrick <small>${esc(s.provider)}</small></span>${s.message ? `<p>${esc(s.message)}</p>` : s.status === "thinking" || s.status === "queued" ? '<div class="thinking-dots" aria-label="Preparando resposta"><i></i><i></i><i></i></div>' : ""}${s.error ? `<p class="work-error">${esc(s.error)}</p>` : ""}${s.operations?.length ? `<details class="proposal-details" data-session-diff="${s.id}"><summary><span class="proposal-tag">PROPOSTA</span>${s.operations.length} ${s.operations.length === 1 ? "alteração" : "alterações"} no canvas</summary><div class="proposal-diff"><p class="muted">Abra para comparar antes e depois.</p></div></details>` : ""}${s.status === "proposed" ? `<div class="proposal-actions"><button class="primary" data-session="${s.id}" data-command="apply">Aplicar proposta</button><button class="text-button" data-session="${s.id}" data-command="cancel">Descartar</button></div>` : s.status === "applied" ? '<span class="proposal-applied">✓ Aplicada no canvas</span>' : ["queued", "thinking"].includes(s.status) ? `<button class="text-button" data-session="${s.id}" data-command="cancel">Cancelar sessão</button>` : ""}</div></article>`,
             )
             .join("")
         : `<div class="chat-welcome"><kendrick-avatar mood="listening"></kendrick-avatar><h3>Vamos dar forma à sua ideia.</h3><p>Selecione um elemento ou me conte o que você quer criar neste canvas.</p><div class="chat-suggestions"><button data-suggestion="Refine o espaçamento da seleção, preservando os tokens e o estilo atual.">Refinar seleção <span>↗</span></button><button data-suggestion="Proponha uma animação suave de entrada para o elemento selecionado.">Criar uma animação <span>↗</span></button></div></div>`
     }</div><form data-kendrick-form class="kendrick-compose"><label class="sr-only" for="${isPopover ? "dock" : "panel"}-kendrick-message">Mensagem para Kendrick</label><textarea id="${isPopover ? "dock" : "panel"}-kendrick-message" name="prompt" required maxlength="6000" placeholder="Peça uma alteração…" aria-label="Mensagem para Kendrick">${esc(draft.prompt)}</textarea><div class="compose-controls"><label class="provider-picker"><span class="provider-dot"></span><select name="provider" aria-label="Provedor do Kendrick">${(providerList.length ? providerList : [{ id: "codex", name: "Codex", available: true }]).map((p) => `<option value="${p.id}" ${draft.provider === p.id ? "selected" : ""} ${p.available ? "" : "disabled"}>${esc(p.name)}${p.available ? "" : " · não instalado"}</option>`).join("")}</select></label><button class="send-kendrick" ${active ? "disabled" : ""} type="submit" aria-label="Enviar para Kendrick" title="Enviar · Enter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div><div class="compose-caption"><span>Enter envia · Shift + Enter quebra linha</span><span>Contexto do canvas</span></div></form><p class="chat-privacy">O contexto será enviado ao provedor escolhido.</p>`;
+    for (const details of target.querySelectorAll("[data-session-diff]")) {
+      details.addEventListener("toggle", async () => {
+        if (!details.open || details.dataset.loaded) return;
+        details.dataset.loaded = "true";
+        const container = details.querySelector(".proposal-diff");
+        container.textContent = "Comparando alterações…";
+        try {
+          const diff = await api(
+            `/api/projects/${state.project.id}/sessions/${details.dataset.sessionDiff}/diff`,
+          );
+          const labels = {
+            x: "Posição X",
+            y: "Posição Y",
+            width: "Largura",
+            height: "Altura",
+            fill: "Cor",
+            stroke: "Borda",
+            strokeWidth: "Espessura",
+            text: "Texto",
+            name: "Nome",
+            opacity: "Opacidade",
+            radius: "Raio",
+            rotation: "Rotação",
+            fontSize: "Tamanho da fonte",
+            fontFamily: "Fonte",
+            fontWeight: "Peso",
+            parentId: "Frame",
+            gap: "Espaçamento",
+            padding: "Padding",
+            pathData: "Geometria",
+            pages: "Páginas",
+            tokens: "Tokens",
+            interactions: "Conexões",
+            animations: "Animações",
+            fonts: "Fontes",
+            flows: "Fluxos",
+          };
+          const display = (value) =>
+            esc(
+              value === null
+                ? "—"
+                : typeof value === "object"
+                  ? JSON.stringify(value).slice(0, 120)
+                  : String(value).slice(0, 180),
+            );
+          container.innerHTML = `<p class="muted">Revisão ${diff.baseRevision} → proposta${diff.conflict ? " · O canvas mudou; esta proposta precisa ser refeita antes de aplicar." : ""}</p>${diff.changes
+            .map(
+              (change) =>
+                `<article class="diff-node"><strong>${esc(change.name)} <small>${{ created: "Adicionar", deleted: "Excluir", updated: "Alterar" }[change.kind]}</small></strong>${change.fields
+                  .filter(
+                    (f) =>
+                      !["id", "type", "pageId", "name", "fontOutline"].includes(
+                        f.property,
+                      ),
+                  )
+                  .map(
+                    (f) =>
+                      `<div class="diff-field"><span>${esc(labels[f.property] || f.property)}</span><del>${display(f.before)}</del><ins>${display(f.after)}</ins></div>`,
+                  )
+                  .join("")}</article>`,
+            )
+            .join(
+              "",
+            )}${diff.projectChanges.map((key) => `<p class="muted">${esc(labels[key] || key)} alterado(s).</p>`).join("")}`;
+        } catch (error) {
+          container.textContent = error.message;
+          delete details.dataset.loaded;
+        }
+      });
+    }
     const form = target.querySelector("form");
     form.oninput = () => saveDraft(target);
     form.onchange = () => saveDraft(target);
@@ -351,26 +453,136 @@ export function installWorkbench(c) {
     cancelAnimationFrame(frameRequest);
     motionTime = null;
   }
+  let editingInteractionId = null;
   function renderPrototype() {
     const doc = current(),
-      n = selected(),
-      frames = doc.nodes.filter((n) => n.type === "frame" && !n.parentId);
+      n = selected();
+    const frames = doc.nodes.filter((n) => n.type === "frame" && !n.parentId);
+    const editing = doc.interactions.find(
+      (i) => i.id === editingInteractionId && i.nodeId === n?.id,
+    );
+    const values = editing || {
+      trigger: "click",
+      action: "navigate",
+      transition: "dissolve",
+      duration: 280,
+      delay: 1000,
+    };
+    const options = (items, value) =>
+      Object.entries(items)
+        .map(
+          ([id, label]) =>
+            `<option value="${esc(id)}" ${id === value ? "selected" : ""}>${esc(label)}</option>`,
+        )
+        .join("");
     const panel = document.querySelector("#inspector");
-    panel.innerHTML = `<div class="inspector-title"><strong>Prototype Mode</strong><small>Gatilhos, navegação e overlays</small></div>${section("Conectar seleção", n ? `<p>${esc(n.name)}</p><form id="connection-form"><label class="work-label">Gatilho<select name="trigger"><option value="click">Clique</option><option value="hover">Hover</option><option value="after-delay">Após atraso</option></select></label><label class="work-label">Ação<select name="action"><option value="navigate">Navegar</option><option value="overlay">Abrir overlay</option><option value="back">Voltar</option><option value="close">Fechar overlay</option></select></label><label class="work-label">Destino<select name="targetId">${frames.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join("")}</select></label><label class="work-label">Transição<select name="transition"><option value="instant">Instantânea</option><option value="dissolve">Dissolver</option><option value="slide">Deslizar</option></select></label>${input("duration", "Duração / atraso (ms)", 280, "number")}<button type="submit" class="primary">Criar conexão</button></form>` : "Selecione um botão ou elemento no canvas.")}${section("Conexões", (doc.interactions || []).map((i) => `<div class="work-item"><span>${esc(doc.nodes.find((n) => n.id === i.nodeId)?.name)} → ${esc(doc.nodes.find((n) => n.id === i.targetId)?.name || i.action)}</span><button data-delete-interaction="${i.id}" aria-label="Excluir conexão">×</button></div>`).join("") || '<p class="muted">Nenhuma conexão ainda.</p>')}${section("Preview", `${button("play-prototype", "▶ Abrir protótipo")}${button("export-prototype", "Exportar HTML navegável")}`)}`;
-    panel.querySelector("form")?.addEventListener("submit", async (e) => {
+    panel.innerHTML = `<div class="inspector-title"><strong>Prototype Mode</strong><small>Conecte telas e ative animações</small></div>${section("Fluxos", `<p class="muted">Arraste o círculo azul da seleção até um frame de destino.</p>${(doc.flows || []).map((f) => `<div class="work-item"><button class="text-button" data-preview-flow="${f.id}">${esc(f.name)} ↗</button><button data-delete-flow="${f.id}" aria-label="Excluir fluxo ${esc(f.name)}">×</button></div>`).join("")}${button("new-flow", "+ Novo fluxo")}`)}${section(editing ? "Editar conexão" : "Conectar seleção", n ? `<p>${esc(n.name)}</p><form id="connection-form"><label class="work-label">Gatilho<select name="trigger">${options({ click: "Clique", hover: "Hover", "mouse-leave": "Ao sair", press: "Pressionar", release: "Soltar", key: "Tecla", "after-delay": "Após atraso" }, values.trigger)}</select></label><label class="work-label" data-trigger-key>Tecla<input name="key" value="${esc(values.key || "Enter")}" maxlength="40"></label><label class="work-label" data-trigger-delay>Atraso (ms)<input name="delay" type="number" min="0" max="60000" value="${values.delay ?? values.duration}"></label><label class="work-label">Ação<select name="action">${options({ navigate: "Navegar", overlay: "Abrir overlay", back: "Voltar", close: "Fechar overlay", animate: "Executar animação" }, values.action)}</select></label><label class="work-label" data-action-target>Destino<select name="targetId">${options(Object.fromEntries(frames.map((f) => [f.id, f.name])), values.targetId)}</select></label><label class="work-label" data-action-animation>Animação<select name="animationId">${options(Object.fromEntries(doc.animations.map((a) => [a.id, doc.nodes.find((n) => n.id === a.nodeId)?.name + " · " + a.duration + " ms"])), values.animationId)}</select></label><label class="work-label" data-action-transition>Transição<select name="transition">${options({ instant: "Instantânea", dissolve: "Dissolver", slide: "Deslizar", push: "Empurrar", "move-in": "Entrada", "move-out": "Saída" }, values.transition)}</select></label><div data-action-duration>${input("duration", "Duração (ms)", values.duration, "number")}</div><button type="submit" class="primary">${editing ? "Salvar conexão" : "Criar conexão"}</button>${editing ? `<button type="button" class="text-button" data-work="stop-editing-connection">Nova conexão</button>` : ""}</form>` : "Selecione um botão ou elemento no canvas.")}${section("Conexões", doc.interactions.map((i) => `<div class="work-item"><button class="text-button" data-edit-interaction="${i.id}">${esc(doc.nodes.find((n) => n.id === i.nodeId)?.name)} → ${esc(i.action === "animate" ? "Animação" : doc.nodes.find((n) => n.id === i.targetId)?.name || i.action)}</button><button data-delete-interaction="${i.id}" aria-label="Excluir conexão">×</button></div>`).join("") || '<p class="muted">Nenhuma conexão ainda.</p>')}${section("Preview", `${button("play-prototype", "▶ Abrir protótipo")}${button("export-prototype", "Exportar HTML navegável")}`)}`;
+    const form = panel.querySelector("#connection-form");
+    if (!form) return;
+    function fields() {
+      const navigate = ["navigate", "overlay"].includes(
+        form.elements.action.value,
+      );
+      for (const [selector, visible] of [
+        ["[data-trigger-key]", form.elements.trigger.value === "key"],
+        ["[data-trigger-delay]", form.elements.trigger.value === "after-delay"],
+        ["[data-action-target]", navigate],
+        ["[data-action-animation]", form.elements.action.value === "animate"],
+        ["[data-action-transition]", navigate],
+        ["[data-action-duration]", navigate],
+      ])
+        form.querySelector(selector).hidden = !visible;
+    }
+    form.onchange = fields;
+    fields();
+    form.onsubmit = async (e) => {
       e.preventDefault();
-      const data = new FormData(e.target),
-        item = {
-          id: uuid(),
-          nodeId: n.id,
-          trigger: data.get("trigger"),
-          action: data.get("action"),
-          targetId: data.get("targetId"),
-          transition: data.get("transition"),
-          duration: Number(data.get("duration")),
-        };
-      await setData("interactions", [...(doc.interactions || []), item]);
-    });
+      const data = new FormData(form);
+      const item = {
+        id: editing?.id || uuid(),
+        nodeId: n.id,
+        trigger: data.get("trigger"),
+        action: data.get("action"),
+        transition: data.get("transition"),
+        duration: Number(data.get("duration")),
+      };
+      if (["navigate", "overlay"].includes(item.action))
+        item.targetId = data.get("targetId");
+      if (item.action === "animate") item.animationId = data.get("animationId");
+      if (item.trigger === "key") item.key = data.get("key");
+      if (item.trigger === "after-delay")
+        item.delay = Number(data.get("delay"));
+      try {
+        await setData("interactions", [
+          ...current().interactions.filter((i) => i.id !== item.id),
+          item,
+        ]);
+      } catch (error) {
+        notice(error.message, true);
+      }
+    };
+  }
+  function canvasPoint(event) {
+    return new DOMPoint(event.clientX, event.clientY).matrixTransform(
+      document.querySelector("#viewport").getScreenCTM().inverse(),
+    );
+  }
+  function dropFrame(event) {
+    const id = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest("[data-node-id]")?.dataset.nodeId;
+    let node = current().nodes.find((n) => n.id === id);
+    while (node?.parentId)
+      node = current().nodes.find((n) => n.id === node.parentId);
+    return node?.type === "frame" ? node : null;
+  }
+  function connectorDown(event) {
+    if (event.button !== 0 || state.pan || event.altKey) return false;
+    const handle = event.target.closest("[data-prototype-handle]");
+    if (state.mode !== "prototype" || !handle) return false;
+    event.preventDefault();
+    state.drag = {
+      kind: "connection",
+      nodeId: handle.dataset.prototypeHandle,
+      revision: state.project.revision,
+      point: canvasPoint(event),
+    };
+    return true;
+  }
+  function connectorMove(event) {
+    if (state.drag?.kind !== "connection") return false;
+    state.drag.point = canvasPoint(event);
+    state.drag.targetId = dropFrame(event)?.id;
+    renderScene();
+    return true;
+  }
+  async function connectorUp(event) {
+    if (state.drag?.kind !== "connection") return false;
+    const drag = state.drag,
+      target = dropFrame(event);
+    state.drag = null;
+    renderScene();
+    if (!target) return true;
+    if (drag.revision !== state.project.revision) {
+      notice("O canvas mudou. Arraste a conexão novamente.", true);
+      return true;
+    }
+    const item = {
+      id: uuid(),
+      nodeId: drag.nodeId,
+      targetId: target.id,
+      trigger: "click",
+      action: "navigate",
+      transition: "dissolve",
+      duration: 280,
+    };
+    editingInteractionId = item.id;
+    try {
+      await setData("interactions", [...current().interactions, item]);
+    } catch (error) {
+      notice(error.message, true);
+    }
+    return true;
   }
   function renderResources() {
     const panel = document.querySelector("#inspector");
@@ -593,6 +805,24 @@ export function installWorkbench(c) {
       },
     ]);
   }
+  function renderWendler() {
+    const panel = document.querySelector("#inspector");
+    panel.innerHTML = `<div class="inspector-title"><strong>Wendler</strong><small>Seus agentes no mesmo canvas</small></div><section class="inspector-section" id="wendler-status" aria-live="polite"><p class="muted">Verificando conexão…</p></section>${section("Trabalhar neste projeto", `<p class="muted">No Wendler, peça ao agente para abrir este projeto no Imhotep. Ele pode consultar sua seleção, renderizar frames e editar o canvas. As alterações aparecem aqui e ficam no histórico.</p>${button("copy-wendler-context", "Copiar contexto do projeto")}`)}`;
+    api("/api/integrations/wendler")
+      .then((link) => {
+        const target = panel.querySelector("#wendler-status");
+        if (!target) return;
+        let uiUrl = "";
+        try {
+          if (new URL(link.uiUrl).protocol === "https:") uiUrl = link.uiUrl;
+        } catch {}
+        target.innerHTML = `<h3>${link.configured && link.online ? (link.executorReady === false ? "Reconectar executor" : "Conectado") : link.configured ? "Wendler fora do ar" : "Aguardando conexão"}</h3><p class="muted">${link.configured ? (link.online ? (link.executorReady === false ? "A integração está cadastrada. Abra o Wendler para reconectar a conta do executor e voltar a conversar com os agentes." : "Integração cadastrada. Os agentes têm acesso às ferramentas do Imhotep.") : "A integração está cadastrada, mas o Wendler não respondeu. Seus projetos continuam salvos aqui.") : "O Imhotep ainda não foi cadastrado neste Wendler."}</p>${uiUrl ? `<a class="text-button" href="${esc(uiUrl)}" target="_blank" rel="noopener noreferrer">Abrir Wendler ↗</a>` : ""}`;
+      })
+      .catch((err) => {
+        const target = panel.querySelector("#wendler-status");
+        if (target) target.textContent = err.message;
+      });
+  }
   function renderSettings() {
     const panel = document.querySelector("#inspector");
     panel.innerHTML = `<div class="inspector-title"><strong>Workspace</strong><small>Projetos, páginas e backups</small></div>${section(
@@ -662,6 +892,10 @@ export function installWorkbench(c) {
       renderComponents();
       return true;
     }
+    if (state.mode === "wendler") {
+      renderWendler();
+      return true;
+    }
     return false;
   }
   function decorateInspector(panel, n) {
@@ -720,6 +954,42 @@ export function installWorkbench(c) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   async function act(name) {
+    if (name === "stop-editing-connection") {
+      editingInteractionId = null;
+      renderPrototype();
+      return true;
+    }
+    if (name === "new-flow") {
+      const frames = current().nodes.filter(
+        (n) => n.type === "frame" && !n.parentId,
+      );
+      if (!frames.length) {
+        notice("Adicione um frame para iniciar um fluxo.");
+        return true;
+      }
+      openForm(
+        "Novo fluxo",
+        `${input("name", "Nome do fluxo", "Fluxo " + ((current().flows || []).length + 1))}<label class="work-label">Tela inicial<select name="startFrameId">${frames.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join("")}</select></label>`,
+        (data) =>
+          setData("flows", [
+            ...(current().flows || []),
+            {
+              id: uuid(),
+              name: data.get("name"),
+              startFrameId: data.get("startFrameId"),
+            },
+          ]),
+      );
+      return true;
+    }
+    if (name === "copy-wendler-context") {
+      const node = selected();
+      await c.copyText(
+        `Abra o projeto ${state.project.id} (${state.project.document.name}) usando as ferramentas MCP imhotep. Consulte get_document_tree e get_selection antes de editar. ${node ? `Seleção: ${node.name} (${node.id}).` : "Sem seleção específica."} Preserve o visual, use a revisão atual e identifique a autoria como wendler. Editor: ${location.origin}/?project=${state.project.id}`,
+      );
+      notice("Contexto do projeto copiado.");
+      return true;
+    }
     if (
       [
         "agents",
@@ -728,6 +998,7 @@ export function installWorkbench(c) {
         "resources",
         "tokens",
         "components",
+        "wendler",
       ].includes(name)
     ) {
       mode(name);
@@ -1080,6 +1351,16 @@ export function installWorkbench(c) {
     };
   }
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.matches?.("[data-prototype-handle]")) {
+      e.preventDefault();
+      document.querySelector('#connection-form [name="targetId"]')?.focus();
+      return;
+    }
+    if (e.key === "Escape" && state.drag?.kind === "connection") {
+      state.drag = null;
+      renderScene();
+      return;
+    }
     if (
       state.project &&
       (e.ctrlKey || e.metaKey) &&
@@ -1124,6 +1405,26 @@ export function installWorkbench(c) {
         }
       }
       if (b.dataset.work) await act(b.dataset.work);
+      if (b.dataset.editInteraction) {
+        const item = current().interactions.find(
+          (i) => i.id === b.dataset.editInteraction,
+        );
+        if (item) {
+          editingInteractionId = item.id;
+          select(item.nodeId);
+        }
+      }
+      if (b.dataset.previewFlow)
+        window.open(
+          `/api/projects/${state.project.id}/prototype?flow=${encodeURIComponent(b.dataset.previewFlow)}`,
+          "_blank",
+          "noopener",
+        );
+      if (b.dataset.deleteFlow)
+        await setData(
+          "flows",
+          (current().flows || []).filter((f) => f.id !== b.dataset.deleteFlow),
+        );
       if (b.dataset.font && selected()?.type === "text")
         await commit([
           {
@@ -1174,12 +1475,22 @@ export function installWorkbench(c) {
           ),
         );
       if (b.dataset.deleteAnimation)
-        await setData(
-          "animations",
-          current().animations.filter(
-            (a) => a.id !== b.dataset.deleteAnimation,
-          ),
-        );
+        await commit([
+          {
+            type: "set_project_data",
+            field: "interactions",
+            value: current().interactions.filter(
+              (i) => i.animationId !== b.dataset.deleteAnimation,
+            ),
+          },
+          {
+            type: "set_project_data",
+            field: "animations",
+            value: current().animations.filter(
+              (a) => a.id !== b.dataset.deleteAnimation,
+            ),
+          },
+        ]);
       if (b.dataset.animation)
         editAnimation(
           current().animations.find((a) => a.id === b.dataset.animation),
@@ -1248,26 +1559,48 @@ export function installWorkbench(c) {
     mount,
     visibleDocument,
     renderInspector,
+    connectorDown,
+    connectorMove,
+    connectorUp,
     decorateInspector,
     act,
     stopMotion,
     updatePages,
     connectionMarkup(doc) {
       if (state.mode !== "prototype") return "";
-      return `<g pointer-events="none">${(doc.interactions || [])
+      const scale = state.view.scale,
+        node = doc.nodes.find((n) => n.id === state.selected);
+      const point = (n) => {
+        const p = position(n, doc.nodes);
+        return { x: p.x + n.width, y: p.y + n.height / 2 };
+      };
+      const curve = (a, b) =>
+        `M${a.x} ${a.y} C${a.x + 80} ${a.y} ${b.x - 80} ${b.y} ${b.x} ${b.y}`;
+      const connections = doc.interactions
         .map((i) => {
+          if (!["navigate", "overlay"].includes(i.action)) return "";
           const source = doc.nodes.find((n) => n.id === i.nodeId),
             target = doc.nodes.find((n) => n.id === i.targetId);
           if (!source || !target) return "";
-          const a = position(source, doc.nodes),
-            b = position(target, doc.nodes),
-            x = a.x + source.width,
-            y = a.y + source.height / 2,
-            tx = b.x,
-            ty = b.y + target.height / 2;
-          return `<path d="M${x} ${y} C${x + 80} ${y} ${tx - 80} ${ty} ${tx} ${ty}" fill="none" stroke="#A28CFF" stroke-width="${2 / state.view.scale}"/><circle cx="${x}" cy="${y}" r="${4 / state.view.scale}" fill="#A28CFF"/><circle cx="${tx}" cy="${ty}" r="${4 / state.view.scale}" fill="#A28CFF"/>`;
+          const a = point(source),
+            p = position(target, doc.nodes),
+            b = { x: p.x, y: p.y + target.height / 2 };
+          return `<path d="${curve(a, b)}" fill="none" stroke="#A28CFF" stroke-width="${2 / scale}" marker-end="url(#prototype-arrow)"/>`;
         })
-        .join("")}</g>`;
+        .join("");
+      let draft = "";
+      if (state.drag?.kind === "connection") {
+        const source = doc.nodes.find((n) => n.id === state.drag.nodeId),
+          target = doc.nodes.find((n) => n.id === state.drag.targetId);
+        if (source)
+          draft += `<path d="${curve(point(source), state.drag.point)}" fill="none" stroke="#328BFF" stroke-width="${2 / scale}" stroke-dasharray="${5 / scale} ${4 / scale}"/>`;
+        if (target) {
+          const p = position(target, doc.nodes);
+          draft += `<rect x="${p.x}" y="${p.y}" width="${target.width}" height="${target.height}" fill="none" stroke="#328BFF" stroke-width="${3 / scale}"/>`;
+        }
+      }
+      const handle = node ? point(node) : null;
+      return `<defs><marker id="prototype-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#A28CFF"/></marker></defs><g pointer-events="none">${connections}${draft}</g>${handle ? `<circle data-prototype-handle="${node.id}" cx="${handle.x + 8 / scale}" cy="${handle.y}" r="${7 / scale}" fill="#328BFF" stroke="#fff" stroke-width="${1.5 / scale}" pointer-events="all" style="cursor:crosshair" role="button" tabindex="0" aria-label="Arrastar conexão de ${esc(node.name)}"><title>Arraste até o frame de destino ou use o formulário de conexão</title></circle>` : ""}`;
     },
   };
 }

@@ -118,7 +118,7 @@ Configure um servidor MCP **stdio** no agente usando um caminho absoluto, ajusta
 }
 ```
 
-O objeto externo da configuração varia conforme o cliente; `command`, `args` e `env` descrevem o processo a cadastrar. O adaptador implementa JSON-RPC por linhas em stdio e anuncia as ferramentas `list_projects`, `get_document_tree`, `get_revision_history`, `render_frame`, `apply_patch`, `restore_revision`, `list_pages`, `get_prototype_graph`, `get_animation_timeline` e `list_assets`. `render_frame` devolve texto SVG ou imagem PNG. Os clientes reais Claude Code/Codex/OpenCode ainda precisam de um teste individual de compatibilidade; o protocolo e as chamadas foram exercitados por subprocesso nos testes.
+O objeto externo da configuração varia conforme o cliente; `command`, `args` e `env` descrevem o processo a cadastrar. O adaptador implementa JSON-RPC por linhas em stdio e anuncia as ferramentas `list_projects`, `get_document_tree`, `get_revision_history`, `render_frame`, `apply_patch`, `restore_revision`, `list_pages`, `get_prototype_graph`, `get_animation_timeline` e `list_assets`. `render_frame` devolve texto SVG ou imagem PNG. O protocolo e as chamadas são exercitados por subprocessos nos testes. O Codex do Wendler também descobriu as ferramentas e executou uma edição real pelo MCP; Claude Code/OpenCode continuam dependendo de teste individual no ambiente de cada conta.
 
 O servidor HTTP precisa estar em execução. O agente pode operar com todos os navegadores fechados. O MCP permite operações estruturadas. Para conversar e solicitar propostas ao provedor, use o painel Kendrick no editor. O adaptador recebe o contexto e registra as sessões mesmo se o navegador for fechado.
 
@@ -147,8 +147,22 @@ Abra **Kendrick** na navegação lateral ou **Agentes** na barra superior. Escol
 
 Codex está instalado e foi testado com chamada real nesta instalação. Claude Code também está instalado, mas a conta atingiu a cota semanal; o erro é exibido no painel. OpenCode depende de instalação e login próprios. O processo usa a configuração de modelo do provedor, sem chaves embutidas no projeto.
 
-O botão **Protótipo** cria conexões e abre o fluxo navegável. **Motion** edita keyframes em JSON, oferece scrub e reprodução. **Dev** exporta a composição visual React/SVG e o HTML com navegação/motion. **Workspace** gerencia páginas, importação de projeto e backups.
+O botão **Protótipo** cria conexões e abre o fluxo navegável. **Motion** edita keyframes por campos de tempo, propriedade e valor, oferece scrub e reprodução e permite acioná-los nas interações do protótipo. **Dev** exporta a composição visual React/SVG e o HTML com navegação/motion. **Workspace** gerencia páginas, importação de projeto e backups.
 
-Consulte [o escopo, os limites e a validação da versão 0.2](docs/RELEASE_0.2.md). Os modos principais estão conectados ao motor, mas recursos avançados como alças Bézier, booleanos, layout responsivo e permissões multiusuário ainda não estão implementados.
+Consulte [a integração Wendler e os fluxos da versão 0.3](docs/RELEASE_0.3.md), [o estado completo do plano](docs/PLAN_STATUS.md) e [os limites da base 0.2](docs/RELEASE_0.2.md). Os modos principais estão conectados ao motor, mas recursos avançados como alças Bézier, booleanos, layout responsivo e permissões multiusuário ainda não estão implementados.
 
 Veja também [arquitetura](docs/ARCHITECTURE.md), [mapa do design](docs/DESIGN_MAP.md) e [visão de produto](docs/IMHOTEP_PROJETO.md).
+
+## Wendler e inicialização automática
+
+Com os dois serviços em execução, cadastre a integração persistente:
+
+```bash
+npm run connect:wendler
+```
+
+O instalador confirma as 14 ferramentas no executor do Wendler. Abra **Wendler** na lateral do editor para conferir a conexão e copiar o contexto do projeto. O agente consulta a seleção real, renderiza e altera o documento pela mesma API; o canvas recebe as operações por SSE e mantém a autoria no histórico. `npm run test:wendler` verifica uma chamada real do Kyle em um projeto demonstrativo e consome a cota da conta conectada.
+
+Para manter o Imhotep ativo após logout e reiniciar em caso de falha, pare uma instância manual existente e execute `npm run service:install`. O serviço systemd de usuário usa o acesso Tailscale e o banco atuais. Consulte logs com `journalctl --user -u imhotep` e confira o linger do usuário na instalação. [Detalhes operacionais e parâmetros do instalador](docs/RELEASE_0.3.md).
+
+`npm run test:flows` verifica conexão por arraste, fluxos nomeados, acionamento de animação, navegação/teclado, exportação offline, seleção pelo MCP e comparação de propostas. [connected-flow.json](examples/connected-flow.json) é um projeto importável com três telas, dois fluxos e motion por clique.

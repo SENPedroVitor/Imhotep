@@ -415,6 +415,7 @@ function pointerDown(e) {
   if (e.button !== 0 && e.button !== 1) return;
   const canvas = $("#canvas");
   canvas.setPointerCapture(e.pointerId);
+  if (workbench.connectorDown(e)) return;
   const resize = e.target.closest("[data-resize]");
   if (resize && selected()) {
     state.drag = {
@@ -466,6 +467,7 @@ function pointerDown(e) {
     };
 }
 function pointerMove(e) {
+  if (workbench.connectorMove(e)) return;
   const drag = state.drag;
   if (!drag) return;
   const dx = e.clientX - drag.x,
@@ -512,7 +514,8 @@ function pointerMove(e) {
   group?.setAttribute("transform", `translate(${drag.next.x} ${drag.next.y})`);
   $("#selection").innerHTML = selectionMarkup({ ...drag.node, ...drag.next });
 }
-async function pointerUp() {
+async function pointerUp(e) {
+  if (await workbench.connectorUp(e)) return;
   const drag = state.drag;
   state.drag = null;
   if (["node", "resize"].includes(drag?.kind) && drag.moved) {
@@ -553,7 +556,7 @@ function renderInspector() {
     return;
   }
   if (state.mode === "dev") {
-    panel.innerHTML = `<div class="inspector-title"><strong>${icon("code")}Inspeção de código</strong><small>CSS da geometria e estilo selecionados</small></div>${n ? `<section class="inspector-section"><h3>${esc(n.name)}</h3><pre id="css-output">${esc(cssFor(n))}</pre><button class="text-button" data-action="copy-css">Copiar CSS</button></section>` : '<p class="inspector-empty">Selecione um elemento para inspecionar suas propriedades.</p>'}<section class="inspector-section"><h3>Exportar documento</h3><button class="text-button" data-action="export-svg">${icon("download")} SVG</button><button class="text-button" data-action="export-png">${icon("download")} PNG</button><button class="text-button" data-action="export-html">HTML / Motion</button><button class="text-button" data-action="export-react">React</button><button class="text-button" data-action="export-json">${icon("download")} JSON</button><p class="muted">Exportação visual do documento. Layout responsivo e interações não são gerados nesta versão.</p></section>`;
+    panel.innerHTML = `<div class="inspector-title"><strong>${icon("code")}Inspeção de código</strong><small>CSS da geometria e estilo selecionados</small></div>${n ? `<section class="inspector-section"><h3>${esc(n.name)}</h3><pre id="css-output">${esc(cssFor(n))}</pre><button class="text-button" data-action="copy-css">Copiar CSS</button></section>` : '<p class="inspector-empty">Selecione um elemento para inspecionar suas propriedades.</p>'}<section class="inspector-section"><h3>Exportar documento</h3><button class="text-button" data-action="export-svg">${icon("download")} SVG</button><button class="text-button" data-action="export-png">${icon("download")} PNG</button><button class="text-button" data-action="export-html">HTML / Motion</button><button class="text-button" data-action="export-react">React</button><button class="text-button" data-action="export-json">${icon("download")} JSON</button><p class="muted">HTML inclui as interações e animações suportadas. React exporta o visual em SVG. Layout responsivo exige implementação adicional.</p></section>`;
     return;
   }
   if (!n) {

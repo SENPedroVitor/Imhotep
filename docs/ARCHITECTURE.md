@@ -63,3 +63,14 @@ A interface suporta HTTP privado: quando `crypto.randomUUID` ou a API de clipboa
 O motor de features valida páginas, tokens/bindings, componentes/variantes, interações, animações e fontes. O banco mantém compatibilidade com documentos anteriores: os campos opcionais recebem defaults ao abrir. O núcleo de documento continua com schemaVersion 1, com extensões compatíveis opcionais; clientes antigos devem atualizar para preservar os campos. Sessões do Kendrick ficam em uma tabela separada e operações aprovadas entram no mesmo histórico transacional. Reinício marca sessões em execução como interrompidas; não há reenvio automático a provedores. O runtime exportado reutiliza renderer/motion e incorpora os dados para navegação offline.
 
 Backups usam a API online do SQLite e verificam integridade antes de apresentar sucesso. Não há rotação automática. As fontes importadas são validadas com Fontkit, persistidas no documento e convertidas em paths nas exportações. Consulte RELEASE_0.2.md para limites de cada recurso.
+
+
+## Incremento 0.3
+
+- `public/prototype.js` contém o runtime compartilhado entre preview e HTML offline. Os relógios são por animação; interações `animate` tornam a animação dependente de gatilho. Sem animação ativa, não há loop permanente de renderização.
+- O documento v1 ganha `flows` como coleção opcional com padrão vazio. Fluxos referenciam somente frames raiz. Interações suportam `animationId`, `key` e `delay`; exclusões mantêm a integridade dessas referências.
+- `src/server/presence.js` recebe `POST /api/projects/:id/selection` e fornece `GET` na mesma rota. Leases por aba, limitadas a 100 clientes e 90 segundos, são efêmeras e não geram revisões. O MCP consulta todas as seleções ainda ativas desse projeto.
+- `GET /api/projects/:id/sessions/:id/diff` calcula a proposta contra seu snapshot original, sem modificar o documento. Conflitos são informados e continuam bloqueados pelo motor ao aplicar.
+- `GET /api/integrations/wendler` verifica serviço e prontidão do executor usando somente a API local previamente configurada pelo instalador. O navegador não fornece um destino de rede ao servidor.
+- `scripts/connect-wendler.mjs` instala o MCP de dependências nativas no volume `/data` do Wendler usando sua API de plugins, sem alterar outros conectores ou embutir tokens. O modelo e as permissões do Wendler são preservados.
+- `scripts/install-service.mjs` instala o serviço systemd de usuário para iniciar no login/boot com linger e reiniciar em falhas. A rede permanece loopback + Tailscale explícito.

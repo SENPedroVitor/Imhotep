@@ -3,6 +3,7 @@ import * as renderer from "../../public/renderer.js";
 import { icons } from "../../public/icons.js";
 import { renderSvg, escapeXml } from "../../public/renderer.js";
 import { evaluateMotion, ease } from "../../public/motion.js";
+import { mountPrototype } from "../../public/prototype.js";
 export async function workspaceRoutes({
   url,
   req,
@@ -17,12 +18,16 @@ export async function workspaceRoutes({
     return true;
   }
   const match = url.pathname.match(
-    /^\/api\/projects\/([\w-]+)\/(sessions|code|prototype)(?:\/([\w-]+)\/(apply|cancel))?$/,
+    /^\/api\/projects\/([\w-]+)\/(sessions|code|prototype)(?:\/([\w-]+)\/(apply|cancel|diff))?$/,
   );
   if (!match) return false;
   const [, projectId, action, sessionId, command] = match;
   const project = store.get(projectId);
   if (action === "sessions") {
+    if (req.method === "GET" && command === "diff") {
+      send(200, kendrick.diff(projectId, sessionId));
+      return true;
+    }
     if (req.method === "GET" && !sessionId) {
       send(200, kendrick.list(projectId));
       return true;
@@ -44,6 +49,7 @@ export async function workspaceRoutes({
   }
   if (req.method === "GET" && (action === "code" || action === "prototype")) {
     const doc = outlineFonts(project.document);
+    doc.flows ??= [];
     const format = url.searchParams.get("format") || "html";
     if (action === "code" && format === "react") {
       const svg = renderSvg(doc)
@@ -64,14 +70,19 @@ export async function workspaceRoutes({
       return true;
     }
     const safe = JSON.stringify(doc).replace(/</g, "\\u003c");
+    const configuration = JSON.stringify({
+      flowId: url.searchParams.get("flow"),
+      initialFrame: url.searchParams.get("frame"),
+    }).replace(/</g, "\\u003c");
     const runtime = `const icons=${JSON.stringify(icons)};${Object.entries(
       renderer,
     )
       .filter(([, value]) => typeof value === "function")
       .map(([name, value]) => `const ${name}=${value.toString()};`)
-      .join(
-        "",
-      )}const ease=${ease.toString()};const evaluateMotion=${evaluateMotion.toString()};const doc=${safe};const roots=doc.nodes.filter(n=>n.type==='frame'&&!n.parentId);let active=roots[0]?.id,stack=[],overlay=null,start=performance.now(),timers=[];const stage=document.querySelector('#stage');const rootId=n=>{while(n?.parentId)n=doc.nodes.find(p=>p.id===n.parentId);return n?.id;};function act(i){if(i.action==='back'){active=stack.pop()||roots[0]?.id;overlay=null;}else if(i.action==='close')overlay=null;else if(i.action==='overlay')overlay=i.targetId;else{stack.push(active);active=i.targetId;overlay=null;}start=performance.now();if(i.transition!=='instant')stage.animate(i.transition==='slide'?[{opacity:0,transform:'translateX(35px)'},{opacity:1,transform:'none'}]:[{opacity:0},{opacity:1}],{duration:i.duration,fill:'none'});schedule();}function schedule(){timers.forEach(clearTimeout);timers=(doc.interactions||[]).filter(i=>i.trigger==='after-delay'&&rootId(doc.nodes.find(n=>n.id===i.nodeId))===(overlay||active)).map(i=>setTimeout(()=>act(i),i.duration));}for(const event of ['click','pointerover'])stage.addEventListener(event,e=>{let node=e.target.closest('[data-node-id]');while(node){const i=(doc.interactions||[]).find(i=>i.nodeId===node.dataset.nodeId&&i.trigger===(event==='click'?'click':'hover'));if(i){act(i);break;}node=node.parentElement?.closest('[data-node-id]');}});function tick(now){const animated=evaluateMotion(doc,now-start);stage.innerHTML=active?renderSvg(animated,active):renderSvg(animated);if(overlay){const layer=document.createElement('div');layer.className='overlay';layer.innerHTML=renderSvg(animated,overlay);stage.append(layer);}requestAnimationFrame(tick);}schedule();requestAnimationFrame(tick);`;
+      .join("")}
+      const ease=${ease.toString()};const evaluateMotion=${evaluateMotion.toString()};
+      const mountPrototype=${mountPrototype.toString()};const doc=${safe};
+      mountPrototype(doc,{stage:document.querySelector('#stage'),renderSvg,evaluateMotion,...${configuration}});`;
     // The same trusted runtime can be requested independently or embedded for offline exports.
     if (url.searchParams.get("runtime") === "1") {
       send(200, runtime, "text/javascript");
@@ -79,7 +90,7 @@ export async function workspaceRoutes({
     }
     send(
       200,
-      `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>${escapeXml(doc.name)}</title><style>body{margin:0;background:#19191c;color:white;font-family:sans-serif}header{padding:12px;display:flex;justify-content:space-between}a{color:#8dbdff}#stage{height:calc(100vh - 50px);display:grid;place-items:center;position:relative}#stage>svg{max-width:95vw;max-height:90vh}.overlay{position:absolute;inset:0;display:grid;place-items:center;background:#0008}.overlay svg{max-width:85vw;max-height:85vh}</style><header><span>${escapeXml(doc.name)}</span><a href="/?project=${projectId}">Voltar ao editor</a></header><div id="stage"></div><script type="module">${runtime}</script></html>`,
+      `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeXml(doc.name)}</title><style>body{margin:0;background:#19191c;color:white;font:13px system-ui}header{padding:12px;display:flex;gap:12px;align-items:center}header span{margin-right:auto}a{color:#8dbdff}button,select{background:#29292f;color:#eee;border:1px solid #494950;border-radius:6px;padding:6px 10px}#stage{height:calc(100dvh - 60px);display:grid;place-items:center;position:relative;overflow:hidden}#stage>svg{max-width:95vw;max-height:90vh}.overlay{position:absolute;inset:0;display:grid;place-items:center;background:#0008}.overlay svg{max-width:85vw;max-height:85vh}.show-hotspots [data-hotspot]{outline:2px dashed #328bff;outline-offset:2px}</style><header><span>${escapeXml(doc.name)}</span>${doc.flows.length ? `<select data-prototype-flow aria-label="Fluxo do protótipo">${doc.flows.map((f) => `<option value="${escapeXml(f.id)}" ${f.id === url.searchParams.get("flow") ? "selected" : ""}>${escapeXml(f.name)}</option>`).join("")}</select>` : ""}<button data-restart-prototype>Reiniciar</button><button data-toggle-hotspots aria-pressed="false">Hotspots</button><a href="/?project=${projectId}">Voltar ao editor</a></header><div id="stage"></div><script type="module">${runtime}</script></html>`,
       "text/html",
     );
     return true;

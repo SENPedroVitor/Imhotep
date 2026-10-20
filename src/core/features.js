@@ -75,6 +75,27 @@ export function validateFeatures(doc) {
   }
   doc.interactions ??= [];
   doc.animations ??= [];
+  assert(Array.isArray(doc.animations), "Animações inválidas");
+  doc.flows ??= [];
+  assert(
+    Array.isArray(doc.flows) && doc.flows.length <= 50,
+    "Fluxos inválidos",
+  );
+  const flowIds = new Set();
+  for (const flow of doc.flows) {
+    assert(
+      flow &&
+        /^[\w-]{1,100}$/.test(flow.id) &&
+        !flowIds.has(flow.id) &&
+        typeof flow.name === "string" &&
+        flow.name.trim() &&
+        flow.name.length <= 100 &&
+        nodes.get(flow.startFrameId)?.type === "frame" &&
+        !nodes.get(flow.startFrameId).parentId,
+      "Fluxo inválido",
+    );
+    flowIds.add(flow.id);
+  }
   doc.tokens ??= [];
   assert(
     Array.isArray(doc.tokens) && doc.tokens.length <= 500,
@@ -176,21 +197,54 @@ export function validateFeatures(doc) {
         /^[\w-]{1,100}$/.test(i.id) &&
         !interactionIds.has(i.id) &&
         nodes.has(i.nodeId) &&
-        ["click", "hover", "after-delay"].includes(i.trigger) &&
-        ["navigate", "overlay", "back", "close"].includes(i.action) &&
-        ["instant", "dissolve", "slide"].includes(i.transition),
+        [
+          "click",
+          "hover",
+          "mouse-leave",
+          "press",
+          "release",
+          "key",
+          "after-delay",
+        ].includes(i.trigger) &&
+        ["navigate", "overlay", "back", "close", "animate"].includes(
+          i.action,
+        ) &&
+        [
+          "instant",
+          "dissolve",
+          "slide",
+          "push",
+          "move-in",
+          "move-out",
+        ].includes(i.transition),
       "Interação inválida",
     );
     interactionIds.add(i.id);
     if (["navigate", "overlay"].includes(i.action))
       assert(
-        nodes.get(i.targetId)?.type === "frame",
+        nodes.get(i.targetId)?.type === "frame" &&
+          !nodes.get(i.targetId).parentId,
         "Destino precisa ser frame",
       );
     assert(
       Number.isFinite(i.duration) && i.duration >= 0 && i.duration <= 10000,
       "Duração inválida",
     );
+    if (i.delay !== undefined)
+      assert(
+        Number.isFinite(i.delay) && i.delay >= 0 && i.delay <= 60000,
+        "Atraso inválido",
+      );
+    if (i.trigger === "key")
+      assert(
+        typeof i.key === "string" && i.key.length > 0 && i.key.length <= 40,
+        "Tecla inválida",
+      );
+    if (i.action === "animate")
+      assert(
+        doc.animations.some((a) => a?.id === i.animationId),
+        "Animação da interação não existe",
+      );
   }
   assert(
     Array.isArray(doc.animations) && doc.animations.length <= 500,
@@ -243,9 +297,14 @@ export function validateFeatures(doc) {
 export function applyFeature(doc, op) {
   if (op.type === "set_project_data") {
     assert(
-      ["pages", "tokens", "interactions", "animations", "fonts"].includes(
-        op.field,
-      ),
+      [
+        "pages",
+        "tokens",
+        "interactions",
+        "animations",
+        "fonts",
+        "flows",
+      ].includes(op.field),
       "Campo de projeto inválido",
     );
     doc[op.field] = structuredClone(op.value);
@@ -344,6 +403,13 @@ export function maintainFeatures(doc) {
     );
   if (doc.animations)
     doc.animations = doc.animations.filter((a) => ids.has(a.nodeId));
+  if (doc.interactions)
+    doc.interactions = doc.interactions.filter(
+      (i) =>
+        i.action !== "animate" ||
+        doc.animations?.some((a) => a.id === i.animationId),
+    );
+  if (doc.flows) doc.flows = doc.flows.filter((f) => ids.has(f.startFrameId));
   for (const n of doc.nodes)
     if (n.componentId && !ids.has(n.componentId)) {
       delete n.componentId;
