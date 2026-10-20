@@ -1,0 +1,27 @@
+{
+  "name": "imhotep",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Editor visual self-hosted com núcleo headless para agentes",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/server/index.js",
+    "dev": "node --watch src/server/index.js",
+    "test": "node --test",
+    "cli": "node src/cli/index.js",
+    "mcp": "node src/mcp/index.js",
+    "test:browser": "node scripts/verify-browser.mjs",
+    "start:tailscale": "node scripts/start-tailscale.mjs"
+  },
+  "dependencies": {
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "lucide-static": "^1.60.0",
+    "prettier": "^3.9.10"
+  }
+}
