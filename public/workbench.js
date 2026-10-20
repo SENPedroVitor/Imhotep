@@ -24,7 +24,11 @@ export function installWorkbench(c) {
     frameRequest = 0,
     motionTime = null,
     chatOpen = false,
-    chatProject = null;
+    chatProject = null,
+    submitting = false,
+    applying = false,
+    feedbackUntil = 0,
+    feedbackTimer = null;
   const drafts = new Map();
   const current = () => state.project?.document;
   const button = (name, text) =>
@@ -65,6 +69,8 @@ export function installWorkbench(c) {
       chatProject = state.project.id;
       sessions = [];
       chatOpen = false;
+      feedbackUntil = 0;
+      clearTimeout(feedbackTimer);
       document.querySelector("#kendrick-popover")?.remove();
       queueMicrotask(() => loadSessions(false).catch(() => {}));
     }
@@ -145,7 +151,19 @@ export function installWorkbench(c) {
       const result = await api(`/api/projects/${projectId}/sessions`);
       if (state.project?.id !== projectId) return;
       const changed = JSON.stringify(sessions) !== JSON.stringify(result);
+      const justApplied = result.some(
+        (s) =>
+          s.status === "applied" &&
+          sessions.some(
+            (previous) => previous.id === s.id && previous.status !== "applied",
+          ),
+      );
       sessions = result;
+      if (justApplied) {
+        feedbackUntil = performance.now() + 4500;
+        clearTimeout(feedbackTimer);
+        feedbackTimer = setTimeout(updateDock, 4550);
+      }
       updateDock();
       if (state.mode === "agents" && (force || changed)) renderAgents();
       if (chatOpen && (force || changed))
@@ -155,18 +173,13 @@ export function installWorkbench(c) {
     }
   }
   function mood() {
-    const active = sessions.some((s) =>
-      ["queued", "thinking"].includes(s.status),
-    );
-    return active
-      ? "thinking"
-      : sessions.some((s) => s.status === "proposed")
-        ? "attention"
-        : sessions[0]?.status === "applied"
-          ? "success"
-          : sessions[0]?.status === "failed"
-            ? "offline"
-            : "idle";
+    if (applying || submitting || sessions.some((s) => s.status === "queued"))
+      return "working";
+    if (sessions.some((s) => s.status === "thinking")) return "thinking";
+    if (sessions.some((s) => s.status === "proposed")) return "attention";
+    if (performance.now() < feedbackUntil) return "success";
+    if (sessions[0]?.status === "failed") return "attention";
+    return chatOpen || state.mode === "agents" ? "listening" : "idle";
   }
   function updateDock() {
     const launcher = document.querySelector(".kendrick-launcher");
@@ -177,6 +190,11 @@ export function installWorkbench(c) {
       if (avatar?.getAttribute("mood") !== mood())
         avatar?.setAttribute("mood", mood());
     }
+    for (const avatar of document.querySelectorAll(
+      ".kendrick-chat-heading kendrick-avatar",
+    ))
+      if (avatar.getAttribute("mood") !== mood())
+        avatar.setAttribute("mood", mood());
     const context = document.querySelector(
       "#kendrick-popover .chat-context-label",
     );
@@ -281,6 +299,8 @@ export function installWorkbench(c) {
       e.preventDefault();
       const data = new FormData(form);
       form.querySelector("button[type=submit]").disabled = true;
+      submitting = true;
+      updateDock();
       try {
         await api(`/api/projects/${state.project.id}/sessions`, {
           provider: data.get("provider"),
@@ -296,10 +316,17 @@ export function installWorkbench(c) {
       } catch (err) {
         notice(err.message, true);
         form.querySelector("button[type=submit]").disabled = false;
+      } finally {
+        submitting = false;
+        updateDock();
       }
     };
     const next = target.querySelector(".chat-conversation");
-    next.scrollTop = pinned ? next.scrollHeight : scrollTop;
+    next.scrollTop = sessions.length
+      ? pinned
+        ? next.scrollHeight
+        : scrollTop
+      : 0;
     if (focused) {
       form.elements[focused]?.focus({ preventScroll: true });
       if (focused === "prompt") {
@@ -1198,14 +1225,20 @@ export function installWorkbench(c) {
         );
       }
       if (b.dataset.session) {
-        await api(
-          `/api/projects/${state.project.id}/sessions/${b.dataset.session}/${b.dataset.command}`,
-          {},
-        );
-        const p = await api(`/api/projects/${state.project.id}`);
-        state.project = p;
-        refresh();
-        await loadSessions();
+        applying = b.dataset.command === "apply";
+        updateDock();
+        try {
+          await api(
+            `/api/projects/${state.project.id}/sessions/${b.dataset.session}/${b.dataset.command}`,
+            {},
+          );
+          state.project = await api(`/api/projects/${state.project.id}`);
+          refresh();
+          await loadSessions();
+        } finally {
+          applying = false;
+          updateDock();
+        }
       }
     } catch (err) {
       notice(err.message, true);

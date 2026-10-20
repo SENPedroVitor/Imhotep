@@ -18,7 +18,8 @@
     "test:workbench": "node scripts/verify-workbench.mjs",
     "test:kendrick": "node scripts/verify-kendrick.mjs",
     "test:kendrick:browser": "node scripts/verify-kendrick-browser.mjs",
-    "test:interface": "node scripts/verify-interface.mjs"
+    "test:interface": "node scripts/verify-interface.mjs",
+    "test:persona": "node scripts/verify-persona.mjs"
   },
   "dependencies": {
     "fontkit": "^2.0.4",
