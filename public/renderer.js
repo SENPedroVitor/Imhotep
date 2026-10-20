@@ -43,7 +43,7 @@ export function nodeMarkup(n, children = "") {
   if (n.fontOutline) {
     shape = n.fontOutline;
   } else if (n.type === "path") {
-    shape = `<path d="${escapeXml(n.pathData)}" ${attrs}/>`;
+    shape = `<path d="${escapeXml(n.pathData)}" ${n.pathWidth && n.pathHeight ? `transform="scale(${n.width / n.pathWidth} ${n.height / n.pathHeight})"` : ""} ${attrs}/>`;
   } else if (n.type === "image") {
     shape = `<image width="${n.width}" height="${n.height}" href="${escapeXml(n.src)}" preserveAspectRatio="xMidYMid meet"/>`;
   } else if (n.type === "icon") {
@@ -74,20 +74,69 @@ export function layoutDocument(document) {
     }
 
   const walk = (parent) => {
-    let offset = parent.padding ?? 0;
-    for (const n of doc.nodes.filter((n) => n.parentId === parent.id)) {
+    const children = doc.nodes.filter((n) => n.parentId === parent.id),
+      padding = parent.padding ?? 0,
+      gap = parent.gap ?? 0;
+    const flexible = children.filter(
+      (n) => n.constraints?.horizontal === "stretch",
+    );
+    const freeWidth = Math.max(
+      1,
+      parent.width -
+        padding * 2 -
+        gap * Math.max(0, children.length - 1) -
+        children
+          .filter((n) => n.constraints?.horizontal !== "stretch")
+          .reduce((sum, n) => sum + n.width, 0),
+    );
+    let offset = padding,
+      cross = padding,
+      lineSize = 0;
+    for (const n of children) {
+      if (
+        parent.layout === "vertical" &&
+        n.constraints?.horizontal === "stretch"
+      )
+        n.width = Math.max(1, parent.width - padding * 2);
+      if (
+        parent.layout === "horizontal" &&
+        n.constraints?.horizontal === "stretch"
+      )
+        n.width = freeWidth / flexible.length;
+      walk(n);
       if (parent.layout === "horizontal") {
+        if (
+          parent.wrap &&
+          offset > padding &&
+          offset + n.width > parent.width - padding
+        ) {
+          offset = padding;
+          cross += lineSize + gap;
+          lineSize = 0;
+        }
         n.x = offset;
-        n.y = parent.padding ?? 0;
-        offset += n.width + (parent.gap ?? 0);
+        n.y = cross;
+        offset += n.width + gap;
+        lineSize = Math.max(lineSize, n.height);
       }
       if (parent.layout === "vertical") {
+        if (
+          parent.wrap &&
+          offset > padding &&
+          offset + n.height > parent.height - padding
+        ) {
+          offset = padding;
+          cross += lineSize + gap;
+          lineSize = 0;
+        }
         n.y = offset;
-        n.x = parent.padding ?? 0;
-        offset += n.height + (parent.gap ?? 0);
+        n.x = cross;
+        offset += n.height + gap;
+        lineSize = Math.max(lineSize, n.width);
       }
-      walk(n);
     }
+    if (parent.wrap && parent.layout === "horizontal")
+      parent.height = Math.max(parent.height, cross + lineSize + padding);
   };
   for (const root of doc.nodes.filter((n) => !n.parentId)) walk(root);
   return doc;
@@ -100,10 +149,14 @@ export function sceneMarkup(document, rootId) {
   const render = (n) =>
     nodeMarkup(
       n,
-      doc.nodes
-        .filter((c) => c.parentId === n.id)
-        .map(render)
-        .join(""),
+      (n.clip
+        ? `<defs><clipPath id="clip-${escapeXml(n.id)}"><rect width="${n.width}" height="${n.height}" rx="${n.radius ?? 0}"/></clipPath></defs><g clip-path="url(#clip-${escapeXml(n.id)})">`
+        : "") +
+        doc.nodes
+          .filter((c) => c.parentId === n.id)
+          .map(render)
+          .join("") +
+        (n.clip ? "</g>" : ""),
     );
   if (rootId) {
     const root = doc.nodes.find((n) => n.id === rootId);

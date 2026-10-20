@@ -74,3 +74,12 @@ Backups usam a API online do SQLite e verificam integridade antes de apresentar 
 - `GET /api/integrations/wendler` verifica serviço e prontidão do executor usando somente a API local previamente configurada pelo instalador. O navegador não fornece um destino de rede ao servidor.
 - `scripts/connect-wendler.mjs` instala o MCP de dependências nativas no volume `/data` do Wendler usando sua API de plugins, sem alterar outros conectores ou embutir tokens. O modelo e as permissões do Wendler são preservados.
 - `scripts/install-service.mjs` instala o serviço systemd de usuário para iniciar no login/boot com linger e reiniciar em falhas. A rede permanece loopback + Tailscale explícito.
+
+
+## Incremento 0.4
+
+- `src/core/geometry.js` implementa booleanas e normalização de curvas com Paper.js sem canvas gráfico. O resultado permanece um nó path, validado na mesma transação. Operações preservam os originais quando não há resultado válido e não removem referências compartilhadas de componentes.
+- `public/vector.js` representa contornos canônicos, serializa paths e subdivide segmentos cúbicos por de Casteljau. `vector-editor.js` transforma eventos do cursor para o espaço local do path e confirma uma operação por arraste.
+- O schema v1 adiciona dimensões de referência vetorial, constraints, wrapping, clipping e tag semântica por nó. O motor aplica constraints recursivamente no resize; o renderizador compartilhado resolve auto layout e wrapping.
+- `public/semantic.js` converte a mesma árvore em elementos HTML com CSS de flexbox/constraints. `src/core/export-code.js` incorpora fontes locais, gera HTML com o runtime de protótipo/motion e componentes React/Tailwind TSX. `/code?format=html|react|tailwind&frame=...` é a entrada compartilhada da interface, CLI e MCP. A exportação antiga de protótipo SVG continua em `/prototype`.
+- Paper.js é uma dependência do motor, não do MCP stdio instalado no Wendler. Esbuild é usado apenas para validar os arquivos TSX gerados nos testes.

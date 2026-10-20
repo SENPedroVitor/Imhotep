@@ -263,6 +263,9 @@ export async function startServer({
           "/interface.js": "interface.js",
           "/kendrick-art.js": "kendrick-art.js",
           "/motion.js": "motion.js",
+          "/vector.js": "vector.js",
+          "/vector-editor.js": "vector-editor.js",
+          "/layout-editor.js": "layout-editor.js",
           "/kendrick.svg": "kendrick.svg",
         };
         const expression = url.pathname.match(

@@ -43,12 +43,17 @@ const tools = [
   {
     name: "export_code",
     description:
-      "Exporta protótipo HTML navegável com motion ou componente React visual SVG. HTML inclui apenas comportamentos suportados; React é visual estático.",
+      "Exporta protótipo HTML semântico responsivo com motion, React/TSX ou Tailwind/TSX. React e Tailwind exportam componentes visuais com auto layout e constraints; interações executáveis ficam no HTML.",
     inputSchema: {
       type: "object",
       properties: {
         projectId: projectSchema,
-        format: { type: "string", enum: ["html", "react"] },
+        format: { type: "string", enum: ["html", "react", "tailwind"] },
+        frameId: {
+          type: "string",
+          description:
+            "Frame ou componente a exportar. HTML usa frames raiz; React/Tailwind também exportam componentes internos.",
+        },
       },
       required: ["projectId", "format"],
       additionalProperties: false,
@@ -121,7 +126,7 @@ const tools = [
   {
     name: "apply_patch",
     description:
-      "Aplica lote transacional. Exige revisão atual, autoria e ID idempotente. Operações: create_node {node}, update_node {id,changes}, delete_node {id}, rename_project {name}, set_project_data {field:pages|tokens|interactions|animations|fonts|flows,value}, create_component {id}, instantiate_component {componentId,id,pageId,x,y}, reorder_node {id,index}, rename_page {id,name}, delete_page {id}.",
+      "Aplica lote transacional. Exige revisão atual, autoria e ID idempotente. Operações: create_node {node}, update_node {id,changes}, delete_node {id}, rename_project {name}, boolean_nodes {ids,id,operation:unite|subtract|intersect|exclude}, normalize_path {id}, set_project_data {field:pages|tokens|interactions|animations|fonts|flows,value}, create_component {id}, instantiate_component {componentId,id,pageId,x,y}, reorder_node {id,index}, rename_page {id,name}, delete_page {id}.",
     inputSchema: {
       type: "object",
       properties: {
@@ -218,11 +223,11 @@ async function call(name, args) {
     };
   }
   if (name === "export_code") {
-    if (!["html", "react"].includes(args.format))
+    if (!["html", "react", "tailwind"].includes(args.format))
       throw new Error("Formato inválido");
-    const response = await fetch(
-      `${baseUrl()}${path}/${args.format === "react" ? "code?format=react" : "prototype"}`,
-    );
+    const query = new URLSearchParams({ format: args.format });
+    if (args.frameId) query.set("frame", args.frameId);
+    const response = await fetch(`${baseUrl()}${path}/code?${query}`);
     if (!response.ok) throw new Error((await response.json()).error);
     return { content: [{ type: "text", text: await response.text() }] };
   }
@@ -302,7 +307,7 @@ for await (const line of lines) {
           ? version
           : "2025-06-18",
         capabilities: { tools: {} },
-        serverInfo: { name: "imhotep", version: "0.3.0" },
+        serverInfo: { name: "imhotep", version: "0.4.0" },
       };
     } else if (msg.method === "ping") result = {};
     else if (msg.method === "tools/list") result = { tools };

@@ -4,6 +4,7 @@ import { icons } from "../../public/icons.js";
 import { renderSvg, escapeXml } from "../../public/renderer.js";
 import { evaluateMotion, ease } from "../../public/motion.js";
 import { mountPrototype } from "../../public/prototype.js";
+import { exportCode } from "../core/export-code.js";
 export async function workspaceRoutes({
   url,
   req,
@@ -48,27 +49,34 @@ export async function workspaceRoutes({
     }
   }
   if (req.method === "GET" && (action === "code" || action === "prototype")) {
-    const doc = outlineFonts(project.document);
-    doc.flows ??= [];
-    const format = url.searchParams.get("format") || "html";
-    if (action === "code" && format === "react") {
-      const svg = renderSvg(doc)
-        .replace(/class=/g, "className=")
-        .replace(/stroke-width=/g, "strokeWidth=")
-        .replace(/font-family=/g, "fontFamily=")
-        .replace(/font-size=/g, "fontSize=")
-        .replace(/font-weight=/g, "fontWeight=")
-        .replace(/stroke-linecap=/g, "strokeLinecap=")
-        .replace(/stroke-linejoin=/g, "strokeLinejoin=")
-        .replace(/xml:space=/g, "xmlSpace=")
-        .replace(/xmlns=/g, "xmlns=");
+    if (action === "code") {
+      const format = url.searchParams.get("format") || "html";
+      if (!["html", "react", "tailwind"].includes(format)) {
+        send(400, { error: "Formato de código inválido" });
+        return true;
+      }
+      const frameId = url.searchParams.get("frame");
+      if (
+        frameId &&
+        !project.document.nodes.some(
+          (n) =>
+            n.id === frameId &&
+            n.type === "frame" &&
+            (format !== "html" || !n.parentId),
+        )
+      ) {
+        send(404, { error: "Frame não encontrado" });
+        return true;
+      }
       send(
         200,
-        `// Visual estático SVG; interações e motion são exportados em HTML.\nexport default function Design(){return (${svg.replace(/\{/g, "&#123;").replace(/\}/g, "&#125;")});}\n`,
-        "text/plain",
+        await exportCode(project.document, format, frameId),
+        format === "html" ? "text/html" : "text/plain",
       );
       return true;
     }
+    const doc = outlineFonts(project.document);
+    doc.flows ??= [];
     const safe = JSON.stringify(doc).replace(/</g, "\\u003c");
     const configuration = JSON.stringify({
       flowId: url.searchParams.get("flow"),

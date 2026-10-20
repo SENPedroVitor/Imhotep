@@ -168,6 +168,19 @@ button:active:not(:disabled) {
 #connection-form [hidden] {
   display: none;
 }
+.work-label.layout-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.work-label.layout-check input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  min-height: 0;
+  padding: 0;
+  flex-shrink: 0;
+  accent-color: #328bff;
+}
 .proposal-diff {
   padding: 8px 0;
 }

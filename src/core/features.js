@@ -21,6 +21,44 @@ export function validateFeatures(doc) {
   }
   const nodes = new Map(doc.nodes.map((n) => [n.id, n]));
   for (const n of doc.nodes) {
+    for (const key of ["wrap", "clip"])
+      if (n[key] !== undefined)
+        assert(typeof n[key] === "boolean", "Opção de layout inválida");
+    if (n.semanticTag !== undefined)
+      assert(
+        [
+          "div",
+          "section",
+          "main",
+          "header",
+          "footer",
+          "article",
+          "button",
+          "p",
+          "h1",
+          "h2",
+          "h3",
+          "span",
+          "nav",
+        ].includes(n.semanticTag),
+        "Tag semântica inválida",
+      );
+    if (n.constraints !== undefined)
+      assert(
+        n.constraints &&
+          typeof n.constraints === "object" &&
+          !Array.isArray(n.constraints) &&
+          Object.keys(n.constraints).every((k) =>
+            ["horizontal", "vertical"].includes(k),
+          ) &&
+          ["left", "right", "center", "stretch", "scale"].includes(
+            n.constraints.horizontal,
+          ) &&
+          ["top", "bottom", "center", "stretch", "scale"].includes(
+            n.constraints.vertical,
+          ),
+        "Constraints inválidos",
+      );
     n.pageId ??= doc.pages[0].id;
     assert(pages.has(n.pageId), "Página do elemento não existe");
     if (n.parentId)
@@ -41,6 +79,16 @@ export function validateFeatures(doc) {
         "Caminho vetorial inválido",
       );
     if (n.type === "path") assert(n.pathData, "Caminho obrigatório");
+    for (const key of ["pathWidth", "pathHeight"])
+      if (n[key] !== undefined)
+        assert(
+          Number.isFinite(n[key]) && n[key] > 0 && n[key] <= 40000,
+          "Dimensão vetorial inválida",
+        );
+    assert(
+      (n.pathWidth !== undefined) === (n.pathHeight !== undefined),
+      "Informe largura e altura de referência do vetor juntas",
+    );
     if (n.type === "image")
       assert(
         typeof n.src === "string" &&

@@ -147,9 +147,9 @@ Abra **Kendrick** na navegação lateral ou **Agentes** na barra superior. Escol
 
 Codex está instalado e foi testado com chamada real nesta instalação. Claude Code também está instalado, mas a conta atingiu a cota semanal; o erro é exibido no painel. OpenCode depende de instalação e login próprios. O processo usa a configuração de modelo do provedor, sem chaves embutidas no projeto.
 
-O botão **Protótipo** cria conexões e abre o fluxo navegável. **Motion** edita keyframes por campos de tempo, propriedade e valor, oferece scrub e reprodução e permite acioná-los nas interações do protótipo. **Dev** exporta a composição visual React/SVG e o HTML com navegação/motion. **Workspace** gerencia páginas, importação de projeto e backups.
+O botão **Protótipo** cria conexões e abre o fluxo navegável. **Motion** edita keyframes por campos de tempo, propriedade e valor, oferece scrub e reprodução e permite acioná-los nas interações do protótipo. **Dev** exporta HTML semântico responsivo, React/TSX e Tailwind/TSX visuais; o HTML inclui navegação e motion. **Workspace** gerencia páginas, importação de projeto e backups.
 
-Consulte [a integração Wendler e os fluxos da versão 0.3](docs/RELEASE_0.3.md), [o estado completo do plano](docs/PLAN_STATUS.md) e [os limites da base 0.2](docs/RELEASE_0.2.md). Os modos principais estão conectados ao motor, mas recursos avançados como alças Bézier, booleanos, layout responsivo e permissões multiusuário ainda não estão implementados.
+Consulte [geometria e código responsivo da versão 0.4](docs/RELEASE_0.4.md), [a integração Wendler e os fluxos da versão 0.3](docs/RELEASE_0.3.md), [o estado completo do plano](docs/PLAN_STATUS.md) e [os limites da base 0.2](docs/RELEASE_0.2.md). Booleanas, edição gráfica Bézier, constraints e wrapping estão disponíveis. Permissões multiusuário, máscaras/efeitos avançados e geração de aplicações React interativas continuam no roteiro de evolução.
 
 Veja também [arquitetura](docs/ARCHITECTURE.md), [mapa do design](docs/DESIGN_MAP.md) e [visão de produto](docs/IMHOTEP_PROJETO.md).
 
@@ -166,3 +166,9 @@ O instalador confirma as 14 ferramentas no executor do Wendler. Abra **Wendler**
 Para manter o Imhotep ativo após logout e reiniciar em caso de falha, pare uma instância manual existente e execute `npm run service:install`. O serviço systemd de usuário usa o acesso Tailscale e o banco atuais. Consulte logs com `journalctl --user -u imhotep` e confira o linger do usuário na instalação. [Detalhes operacionais e parâmetros do instalador](docs/RELEASE_0.3.md).
 
 `npm run test:flows` verifica conexão por arraste, fluxos nomeados, acionamento de animação, navegação/teclado, exportação offline, seleção pelo MCP e comparação de propostas. [connected-flow.json](examples/connected-flow.json) é um projeto importável com três telas, dois fluxos e motion por clique.
+
+## Vetores e exportação responsiva
+
+Selecione formas com Shift e use **Geometria → Unir / Subtrair / Intersectar / Excluir sobreposição**. Use **Editar nós e alças** para arrastar pontos e controles Bézier, subdividir curvas, suavizar ou excluir nós. As mesmas operações passam pela API/CLI/MCP (`boolean_nodes` e `normalize_path`).
+
+Configure **Layout responsivo** no inspetor: constraints, wrapping do auto layout, recorte e elemento HTML. Em **Dev**, exporte **HTML responsivo**, **React / TSX** ou **Tailwind / TSX**. Texto e frames são elementos nativos; paths e ícones mantêm SVG. A exportação HTML executa as interações/motion suportadas; React/Tailwind geram componentes visuais. `npm run test:design` verifica edição vetorial, exportação offline em desktop/celular e compilação TSX.

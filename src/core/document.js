@@ -4,6 +4,7 @@ import {
   maintainFeatures,
 } from "./features.js";
 import { icons } from "../../public/icons.js";
+import { geometryOperation } from "./geometry.js";
 import { randomUUID } from "node:crypto";
 export class AppError extends Error {
   constructor(message, status = 400) {
@@ -37,6 +38,8 @@ export const nodeKeys = [
   "pageId",
   "rotation",
   "pathData",
+  "pathWidth",
+  "pathHeight",
   "src",
   "layout",
   "gap",
@@ -48,6 +51,10 @@ export const nodeKeys = [
   "variant",
   "tokenBindings",
   "instanceOverrides",
+  "constraints",
+  "wrap",
+  "clip",
+  "semanticTag",
 ];
 const types = [
   "frame",
@@ -173,6 +180,46 @@ export function applyOperations(document, operations) {
           ),
         "Alteração inválida",
       );
+      if (
+        n.type === "frame" &&
+        (op.changes.width !== undefined || op.changes.height !== undefined)
+      ) {
+        const resize = (parent, width, height) => {
+          if (parent.layout && parent.layout !== "none") return;
+          for (const child of doc.nodes.filter(
+            (v) => v.parentId === parent.id,
+          )) {
+            const oldWidth = child.width,
+              oldHeight = child.height;
+            for (const [axis, size, next, previous] of [
+              ["x", "width", width, parent.width],
+              ["y", "height", height, parent.height],
+            ]) {
+              const rule =
+                child.constraints?.[axis === "x" ? "horizontal" : "vertical"];
+              if (["right", "bottom"].includes(rule))
+                child[axis] += next - previous;
+              if (rule === "center") child[axis] += (next - previous) / 2;
+              if (rule === "stretch")
+                child[size] = Math.max(1, child[size] + next - previous);
+              if (rule === "scale") {
+                child[axis] *= next / previous;
+                child[size] *= next / previous;
+              }
+            }
+            if (
+              child.type === "frame" &&
+              (child.width !== oldWidth || child.height !== oldHeight)
+            )
+              resize(
+                { ...child, width: oldWidth, height: oldHeight },
+                child.width,
+                child.height,
+              );
+          }
+        };
+        resize(n, op.changes.width ?? n.width, op.changes.height ?? n.height);
+      }
       Object.assign(n, op.changes);
       if (n.sourceId && !n.componentMain)
         n.instanceOverrides = [
@@ -220,7 +267,7 @@ export function applyOperations(document, operations) {
       doc.nodes = doc.nodes.filter((n) => !deleted.has(n.id));
     } else if (op.type === "rename_project") {
       doc.name = op.name;
-    } else if (!applyFeature(doc, op))
+    } else if (!geometryOperation(doc, op) && !applyFeature(doc, op))
       throw new AppError("Operação não suportada");
   }
   return validateDocument(

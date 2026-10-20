@@ -2,7 +2,11 @@ import { enter } from "./interface.js";
 import { evaluateMotion } from "./motion.js";
 import { renderSvg, position, layoutDocument } from "./renderer.js";
 import { icons } from "./icons.js";
+import { installVectorEditor } from "./vector-editor.js";
+import { installLayoutEditor } from "./layout-editor.js";
 export function installWorkbench(c) {
+  const vector = installVectorEditor(c);
+  const responsive = installLayoutEditor(c);
   const {
     state,
     api,
@@ -900,6 +904,8 @@ export function installWorkbench(c) {
   }
   function decorateInspector(panel, n) {
     if (!n) return;
+    vector.decorate(panel, n);
+    responsive.decorate(panel, n);
     panel.insertAdjacentHTML(
       "beforeend",
       section(
@@ -938,22 +944,33 @@ export function installWorkbench(c) {
         },
       ]),
     );
+    const foot = panel.querySelector(".inspector-foot");
+    if (foot) panel.append(foot);
   }
   async function downloadCode(format) {
     const p = state.project;
+    let frame = selected();
+    if (["react", "tailwind"].includes(format))
+      while (frame && frame.type !== "frame")
+        frame = p.document.nodes.find((n) => n.id === frame.parentId);
+    const scope =
+      ["react", "tailwind"].includes(format) && frame
+        ? "&frame=" + encodeURIComponent(frame.id)
+        : "";
     const r = await fetch(
-      `/api/projects/${p.id}/${format === "react" ? "code?format=react" : "prototype"}`,
+      `/api/projects/${p.id}/${format === "prototype" ? "prototype" : "code?format=" + format + scope}`,
     );
     if (!r.ok) throw new Error((await r.json()).error);
     const blob = await r.blob(),
       url = URL.createObjectURL(blob),
       a = document.createElement("a");
     a.href = url;
-    a.download = `${format === "react" ? "Design.tsx" : "imhotep-prototype.html"}`;
+    a.download = `${["react", "tailwind"].includes(format) ? "Design.tsx" : "imhotep-export.html"}`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   async function act(name) {
+    if (await vector.act(name)) return true;
     if (name === "stop-editing-connection") {
       editingInteractionId = null;
       renderPrototype();
@@ -1263,12 +1280,20 @@ export function installWorkbench(c) {
       );
       return true;
     }
-    if (["export-prototype", "export-motion", "export-html"].includes(name)) {
+    if (["export-prototype", "export-motion"].includes(name)) {
+      await downloadCode("prototype");
+      return true;
+    }
+    if (name === "export-html") {
       await downloadCode("html");
       return true;
     }
     if (name === "export-react") {
       await downloadCode("react");
+      return true;
+    }
+    if (name === "export-tailwind") {
+      await downloadCode("tailwind");
       return true;
     }
     return false;
@@ -1562,6 +1587,10 @@ export function installWorkbench(c) {
     connectorDown,
     connectorMove,
     connectorUp,
+    vectorDown: vector.down,
+    vectorMove: vector.move,
+    vectorUp: vector.up,
+    decorateScene: vector.decorateScene,
     decorateInspector,
     act,
     stopMotion,

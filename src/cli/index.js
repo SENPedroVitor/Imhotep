@@ -44,7 +44,7 @@ try {
     if (!output || !/[.](html|tsx)$/.test(output))
       throw new Error("Informe destino .html ou .tsx");
     const response = await fetch(
-      `${baseUrl()}/api/projects/${encodeURIComponent(projectId)}/${output.endsWith(".tsx") ? "code?format=react" : "prototype"}`,
+      `${baseUrl()}/api/projects/${encodeURIComponent(projectId)}/code?format=${output.endsWith(".tsx") ? "react" : "html"}`,
     );
     if (!response.ok) throw new Error((await response.json()).error);
     await writeFile(output, await response.text());

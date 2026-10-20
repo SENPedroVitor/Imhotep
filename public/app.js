@@ -315,6 +315,7 @@ function renderScene() {
   if (!$("#scene")) return;
   const doc = workbench.visibleDocument();
   $("#scene").innerHTML = sceneMarkup(doc) + workbench.connectionMarkup(doc);
+  workbench.decorateScene(doc);
   applyView();
   const n = selected();
   $("#selection").innerHTML = (state.selectedIds || [state.selected])
@@ -415,6 +416,7 @@ function pointerDown(e) {
   if (e.button !== 0 && e.button !== 1) return;
   const canvas = $("#canvas");
   canvas.setPointerCapture(e.pointerId);
+  if (workbench.vectorDown(e)) return;
   if (workbench.connectorDown(e)) return;
   const resize = e.target.closest("[data-resize]");
   if (resize && selected()) {
@@ -467,6 +469,7 @@ function pointerDown(e) {
     };
 }
 function pointerMove(e) {
+  if (workbench.vectorMove(e)) return;
   if (workbench.connectorMove(e)) return;
   const drag = state.drag;
   if (!drag) return;
@@ -515,6 +518,7 @@ function pointerMove(e) {
   $("#selection").innerHTML = selectionMarkup({ ...drag.node, ...drag.next });
 }
 async function pointerUp(e) {
+  if (await workbench.vectorUp(e)) return;
   if (await workbench.connectorUp(e)) return;
   const drag = state.drag;
   state.drag = null;
@@ -556,14 +560,14 @@ function renderInspector() {
     return;
   }
   if (state.mode === "dev") {
-    panel.innerHTML = `<div class="inspector-title"><strong>${icon("code")}Inspeção de código</strong><small>CSS da geometria e estilo selecionados</small></div>${n ? `<section class="inspector-section"><h3>${esc(n.name)}</h3><pre id="css-output">${esc(cssFor(n))}</pre><button class="text-button" data-action="copy-css">Copiar CSS</button></section>` : '<p class="inspector-empty">Selecione um elemento para inspecionar suas propriedades.</p>'}<section class="inspector-section"><h3>Exportar documento</h3><button class="text-button" data-action="export-svg">${icon("download")} SVG</button><button class="text-button" data-action="export-png">${icon("download")} PNG</button><button class="text-button" data-action="export-html">HTML / Motion</button><button class="text-button" data-action="export-react">React</button><button class="text-button" data-action="export-json">${icon("download")} JSON</button><p class="muted">HTML inclui as interações e animações suportadas. React exporta o visual em SVG. Layout responsivo exige implementação adicional.</p></section>`;
+    panel.innerHTML = `<div class="inspector-title"><strong>${icon("code")}Inspeção de código</strong><small>CSS da geometria e estilo selecionados</small></div>${n ? `<section class="inspector-section"><h3>${esc(n.name)}</h3><pre id="css-output">${esc(cssFor(n))}</pre><button class="text-button" data-action="copy-css">Copiar CSS</button></section>` : '<p class="inspector-empty">Selecione um elemento para inspecionar suas propriedades.</p>'}<section class="inspector-section"><h3>Exportar documento</h3><button class="text-button" data-action="export-svg">${icon("download")} SVG</button><button class="text-button" data-action="export-png">${icon("download")} PNG</button><button class="text-button" data-action="export-html">HTML responsivo</button><button class="text-button" data-action="export-react">React / TSX</button><button class="text-button" data-action="export-tailwind">Tailwind / TSX</button><button class="text-button" data-action="export-json">${icon("download")} JSON</button><p class="muted">HTML semântico inclui interações e motion. React/TSX exporta componentes visuais. Auto layout e constraints controlam a adaptação de tamanho.</p></section>`;
     return;
   }
   if (!n) {
     panel.innerHTML = `<div class="inspector-title"><strong>Design</strong><small>Página 1</small></div><p class="inspector-empty">Selecione uma camada para editar sua posição, tamanho e estilo.<br><br>Use a barra inferior para adicionar formas, frames e texto.</p><section class="inspector-section"><h3>Atalhos</h3><p class="muted">V · selecionar<br>H · mover canvas<br>R · retângulo<br>O · elipse<br>T · texto<br>F · frame<br>Shift+1 · ajustar<br>Ctrl+Z · desfazer</p></section>`;
     return;
   }
-  panel.innerHTML = `<div class="inspector-title"><strong>${icon(n.type === "text" ? "text" : "component")}<input data-property="name" aria-label="Nome do elemento" value="${esc(n.name)}"></strong><small>${n.type === "frame" ? "Frame" : n.type === "text" ? "Texto" : n.type === "ellipse" ? "Elipse" : n.type === "icon" ? "Ícone" : "Retângulo"} · ${esc(n.id.slice(0, 12))}</small></div><section class="inspector-section"><h3>Layout</h3><div class="property-grid">${property("x", "X", n.x)}${property("y", "Y", n.y)}${property("width", "W", n.width)}${property("height", "H", n.height)}${property("radius", "Raio", n.radius ?? 0)}${property("opacity", "α", n.opacity ?? 1)}</div></section><section class="inspector-section"><h3>Estilo</h3><div class="color-field"><input type="color" data-property="fill" aria-label="Cor de preenchimento" value="${/^#[0-9a-f]{6}$/i.test(n.fill) ? n.fill : "#FFFFFF"}"><input type="text" data-property="fill" aria-label="Preenchimento hexadecimal" value="${esc(n.fill ?? "#FFFFFF")}"></div><div class="property-grid" style="margin-top:16px">${property("stroke", "Borda", n.stroke ?? "none", "text")}${property("strokeWidth", "px", n.strokeWidth ?? 0)}</div></section>${n.type === "text" ? `<section class="inspector-section"><h3>Tipografia</h3><textarea id="node-text" data-property="text" aria-label="Conteúdo do texto">${esc(n.text ?? "")}</textarea><select data-property="fontFamily" aria-label="Família da fonte">${["Inter", "Manrope", "JetBrains Mono", "sans-serif", "monospace", ...(state.project.document.fonts || []).map((f) => f.id)].map((f) => `<option ${n.fontFamily === f ? "selected" : ""}>${f}</option>`).join("")}</select><div class="property-grid">${property("fontSize", "Tamanho", n.fontSize ?? 16)}<label class="field"><span>Peso</span><select data-property="fontWeight" aria-label="Peso da fonte">${[400, 500, 600, 700].map((w) => `<option ${n.fontWeight === w ? "selected" : ""}>${w}</option>`).join("")}</select></label></div></section>` : ""}<section class="inspector-section"><button class="danger-button" data-action="delete">${icon("trash")} Excluir elemento</button></section><div class="inspector-foot">Alterações salvas no servidor</div>`;
+  panel.innerHTML = `<div class="inspector-title"><strong>${icon(n.type === "text" ? "text" : "component")}<input data-property="name" aria-label="Nome do elemento" value="${esc(n.name)}"></strong><small>${n.type === "frame" ? "Frame" : n.type === "text" ? "Texto" : n.type === "ellipse" ? "Elipse" : n.type === "icon" ? "Ícone" : n.type === "path" ? "Vetor" : n.type === "image" ? "Imagem" : "Retângulo"} · ${esc(n.id.slice(0, 12))}</small></div><section class="inspector-section"><h3>Layout</h3><div class="property-grid">${property("x", "X", n.x)}${property("y", "Y", n.y)}${property("width", "W", n.width)}${property("height", "H", n.height)}${property("radius", "Raio", n.radius ?? 0)}${property("opacity", "α", n.opacity ?? 1)}</div></section><section class="inspector-section"><h3>Estilo</h3><div class="color-field"><input type="color" data-property="fill" aria-label="Cor de preenchimento" value="${/^#[0-9a-f]{6}$/i.test(n.fill) ? n.fill : "#FFFFFF"}"><input type="text" data-property="fill" aria-label="Preenchimento hexadecimal" value="${esc(n.fill ?? "#FFFFFF")}"></div><div class="property-grid" style="margin-top:16px">${property("stroke", "Borda", n.stroke ?? "none", "text")}${property("strokeWidth", "px", n.strokeWidth ?? 0)}</div></section>${n.type === "text" ? `<section class="inspector-section"><h3>Tipografia</h3><textarea id="node-text" data-property="text" aria-label="Conteúdo do texto">${esc(n.text ?? "")}</textarea><select data-property="fontFamily" aria-label="Família da fonte">${["Inter", "Manrope", "JetBrains Mono", "sans-serif", "monospace", ...(state.project.document.fonts || []).map((f) => f.id)].map((f) => `<option ${n.fontFamily === f ? "selected" : ""}>${f}</option>`).join("")}</select><div class="property-grid">${property("fontSize", "Tamanho", n.fontSize ?? 16)}<label class="field"><span>Peso</span><select data-property="fontWeight" aria-label="Peso da fonte">${[400, 500, 600, 700].map((w) => `<option ${n.fontWeight === w ? "selected" : ""}>${w}</option>`).join("")}</select></label></div></section>` : ""}<section class="inspector-section"><button class="danger-button" data-action="delete">${icon("trash")} Excluir elemento</button></section><div class="inspector-foot">Alterações salvas no servidor</div>`;
   workbench.decorateInspector(panel, n);
   panel.querySelectorAll("[data-property]").forEach((input) =>
     input.addEventListener("change", () => {
