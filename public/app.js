@@ -1,3 +1,4 @@
+import { installInterface, transitionView } from "./interface.js";
 import { installWorkbench } from "./workbench.js";
 import {
   sceneMarkup,
@@ -10,6 +11,7 @@ import {
 const $ = (s) => document.querySelector(s),
   app = $("#app"),
   dialog = $("#dialog");
+installInterface(dialog);
 const paths = {
   layers: "M12 3 2 8l10 5 10-5-10-5ZM2 12l10 5 10-5M2 16l10 5 10-5",
   grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
@@ -146,7 +148,7 @@ async function home() {
   state.project = null;
   state.projects = await api("/api/projects");
   history.replaceState(null, "", "/");
-  renderHome();
+  transitionView(renderHome);
 }
 function renderHome() {
   app.innerHTML =
@@ -178,8 +180,10 @@ async function openProject(projectId) {
   state.pending = null;
   state.online = true;
   history.replaceState(null, "", `/?project=${encodeURIComponent(projectId)}`);
-  renderEditor();
-  requestAnimationFrame(fit);
+  transitionView(() => {
+    renderEditor();
+    requestAnimationFrame(fit);
+  });
   const source = new EventSource(`/api/projects/${projectId}/events`);
   state.source = source;
   source.addEventListener("ready", async () => {
@@ -238,7 +242,7 @@ function selected() {
 function renderEditor() {
   app.innerHTML =
     topbar(true) +
-    `<main class="workspace"><aside class="sidebar"><div class="layers-head"><span>Camadas</span><span class="muted">${state.project.document.nodes.length} elementos</span></div><div class="page-pill">${icon("layers")}Página 1 <span class="muted">${icon("down")}</span></div><input class="layer-search" id="layer-search" placeholder="Buscar camadas…" aria-label="Buscar camadas"><div class="layer-list" id="layers"></div><div class="side-foot">${icon("server")}Workspace local</div></aside><section class="editor-center"><div class="revision-line" id="revision-line"></div><svg class="canvas-surface" id="canvas" tabindex="0" aria-label="Canvas de edição"><g id="viewport"><g id="scene"></g><g id="selection" pointer-events="none"></g></g></svg><div class="toolbar">${ib("arrow", "Selecionar · V", "select")}${ib("hand", "Mover canvas · H", "pan")}<span class="tool-divider"></span>${ib("frame", "Adicionar frame · F", "add-frame")}${ib("rectangle", "Adicionar retângulo · R", "add-rectangle")}${ib("ellipse", "Adicionar elipse · O", "add-ellipse")}${ib("text", "Adicionar texto · T", "add-text")}<span class="tool-divider"></span>${ib("fit", "Ajustar ao canvas", "fit")}</div><div class="zoom-controls"><button data-action="zoom-out" aria-label="Diminuir zoom">−</button><span id="zoom-label"></span><button data-action="zoom-in" aria-label="Aumentar zoom">+</button></div></section><aside class="inspector" id="inspector"></aside></main>`;
+    `<main class="workspace"><aside class="sidebar"><div class="layers-head"><span>Camadas</span><span class="muted">${state.project.document.nodes.length} elementos</span></div><div class="page-pill">${icon("layers")}Página 1 <span class="muted">${icon("down")}</span></div><input class="layer-search" id="layer-search" placeholder="Buscar camadas…" aria-label="Buscar camadas"><div class="layer-list" id="layers"></div><div class="side-foot">${icon("server")}Workspace local</div></aside><section class="editor-center"><div class="revision-line" id="revision-line"></div><svg class="canvas-surface" id="canvas" tabindex="0" aria-label="Canvas de edição"><g id="viewport"><g id="scene"></g><g id="selection" pointer-events="none"></g></g></svg><div class="canvas-dock"><button class="kendrick-launcher" data-work="toggle-chat" aria-label="Conversar com Kendrick" aria-expanded="false" aria-controls="kendrick-popover"><kendrick-avatar mood="idle"></kendrick-avatar><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4 3 3 3-3"/></svg><span class="launcher-hint">Kendrick <kbd>${navigator.platform.includes("Mac") ? "⌘ K" : "Ctrl K"}</kbd></span></button><div class="toolbar">${ib("arrow", "Selecionar · V", "select")}${ib("hand", "Mover canvas · H", "pan")}<span class="tool-divider"></span>${ib("frame", "Adicionar frame · F", "add-frame")}${ib("rectangle", "Adicionar retângulo · R", "add-rectangle")}${ib("ellipse", "Adicionar elipse · O", "add-ellipse")}${ib("text", "Adicionar texto · T", "add-text")}<span class="tool-divider"></span>${ib("fit", "Ajustar ao canvas", "fit")}</div></div><div class="zoom-controls"><button data-action="zoom-out" aria-label="Diminuir zoom">−</button><span id="zoom-label"></span><button data-action="zoom-in" aria-label="Aumentar zoom">+</button></div></section><aside class="inspector" id="inspector"></aside></main>`;
   $("#layer-search").addEventListener("input", renderLayers);
   const canvas = $("#canvas");
   canvas.addEventListener("pointerdown", pointerDown);
@@ -537,6 +541,7 @@ function property(key, label, value, type = "number") {
 function renderInspector() {
   const panel = $("#inspector");
   if (!panel) return;
+  panel.dataset.mode = state.mode;
   if (workbench.renderInspector()) return;
   const n = selected();
   if (state.mode === "history") {
@@ -702,16 +707,50 @@ async function addNode(type) {
 }
 function newProject() {
   dialog.className = "";
-  dialog.innerHTML = `<form id="create-form"><h2>Novo canvas</h2><p>Um novo documento, salvo no seu servidor.</p><label>Nome do canvas<input name="name" required maxlength="160" placeholder="Meu projeto" autocomplete="off"></label><footer><button type="button" class="text-button" data-action="close-dialog">Cancelar</button><button class="primary" type="submit">Criar canvas</button></footer></form>`;
+  dialog.innerHTML = `<form id="create-form"><h2>Novo canvas</h2><p>Um espaço para a próxima ideia. Escolha um formato para começar.</p><label>Nome do canvas<input name="name" required maxlength="160" placeholder="Meu projeto" autocomplete="off"></label><div class="canvas-presets" role="group" aria-label="Formato inicial"><button type="button" class="preset-card selected" data-preset="desktop" aria-pressed="true"><span class="preset-preview desktop-preview"></span><strong>Desktop</strong><small>960 × 640</small></button><button type="button" class="preset-card" data-preset="mobile" aria-pressed="false"><span class="preset-preview mobile-preview"></span><strong>Mobile</strong><small>390 × 844</small></button><button type="button" class="preset-card" data-preset="square" aria-pressed="false"><span class="preset-preview square-preview"></span><strong>Quadrado</strong><small>800 × 800</small></button></div><div class="canvas-dimensions"><label>Largura<input name="width" type="number" min="1" max="20000" value="960" required></label><span>×</span><label>Altura<input name="height" type="number" min="1" max="20000" value="640" required></label><span class="dimension-unit">px</span></div><footer><button type="button" class="text-button" data-action="close-dialog">Cancelar</button><button class="primary" type="submit">Criar canvas</button></footer></form>`;
   dialog.showModal();
   dialog.querySelector("input").focus();
+  dialog.querySelectorAll("[data-preset]").forEach(
+    (button) =>
+      (button.onclick = () => {
+        const size = {
+          desktop: [960, 640],
+          mobile: [390, 844],
+          square: [800, 800],
+        }[button.dataset.preset];
+        dialog.querySelector("[name=width]").value = size[0];
+        dialog.querySelector("[name=height]").value = size[1];
+        dialog.querySelectorAll("[data-preset]").forEach((b) => {
+          b.classList.toggle("selected", b === button);
+          b.setAttribute("aria-pressed", String(b === button));
+        });
+      }),
+  );
   $("#create-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const button = e.target.querySelector("[type=submit]");
     button.disabled = true;
     try {
+      const data = new FormData(e.target),
+        name = data.get("name");
       const project = await api("/api/projects", {
-        name: new FormData(e.target).get("name"),
+        document: {
+          schemaVersion: 1,
+          name,
+          nodes: [
+            {
+              id: uuid(),
+              type: "frame",
+              name: "Frame 1",
+              x: 0,
+              y: 0,
+              width: Number(data.get("width")),
+              height: Number(data.get("height")),
+              fill: "#FAFAFC",
+              radius: 8,
+            },
+          ],
+        },
       });
       dialog.close();
       await openProject(project.id);
@@ -854,6 +893,7 @@ document.addEventListener("click", async (e) => {
   }
 });
 document.addEventListener("keydown", async (e) => {
+  if (e.defaultPrevented) return;
   if (
     !state.project ||
     dialog.open ||

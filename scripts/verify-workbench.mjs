@@ -110,7 +110,7 @@ try {
   await page
     .getByRole("textbox", { name: "Mensagem para Kendrick", exact: true })
     .waitFor();
-  await page.locator(".kendrick").waitFor();
+  await page.locator("#inspector kendrick-avatar").first().waitFor();
   await mkdir("artifacts", { recursive: true });
   await page.screenshot({ path: "artifacts/workbench.png" });
   assert.deepEqual(errors, []);

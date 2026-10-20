@@ -56,3 +56,9 @@ npm run test:kendrick:browser
 ```
 
 `test:kendrick` usa uma chamada real ao provedor e pode consumir a cota da conta conectada. Os demais testes usam armazenamento temporário. O teste de backups restaura dados e histórico; o de fontes usa o arquivo local incluído no repositório.
+
+## Refinamento da interface
+
+O atalho compacto do Kendrick segue o posicionamento da referência Pencil, imediatamente acima da barra de ferramentas. Abre uma conversa flutuante que preserva o inspetor e o rascunho e acompanha a seleção. `Ctrl+K` (ou `Cmd+K`) abre e fecha a conversa. O mascote usa os vetores originais com respiração, piscadas naturais e movimento sutil dos olhos. Os estados thinking/attention/success/offline vêm de sessões reais, sem atividade simulada.
+
+Navegação, painéis, modais e cartões recebem transições curtas; `prefers-reduced-motion` é respeitado. O modal de canvas oferece formatos e dimensões funcionais. O editor de keyframes usa campos de tempo, propriedade e valor em vez de JSON. `npm run test:interface` verifica posição do atalho, mudanças reais de transform na respiração, piscadas naturais, rascunho, contexto, teclado, presets e redução de movimento.

@@ -1,3 +1,4 @@
+import { enter } from "./interface.js";
 import { evaluateMotion } from "./motion.js";
 import { renderSvg, position, layoutDocument } from "./renderer.js";
 import { icons } from "./icons.js";
@@ -21,7 +22,10 @@ export function installWorkbench(c) {
     sessions = [],
     loading = false,
     frameRequest = 0,
-    motionTime = null;
+    motionTime = null,
+    chatOpen = false,
+    chatProject = null;
+  const drafts = new Map();
   const current = () => state.project?.document;
   const button = (name, text) =>
     `<button class="text-button" data-work="${name}">${text}</button>`;
@@ -57,6 +61,14 @@ export function installWorkbench(c) {
     if (pill && !document.querySelector("#page-select"))
       pill.innerHTML = `<select id="page-select" aria-label="Página ativa"></select><button data-work="new-page" title="Nova página">+</button>`;
     updatePages();
+    if (chatProject !== state.project.id) {
+      chatProject = state.project.id;
+      sessions = [];
+      chatOpen = false;
+      document.querySelector("#kendrick-popover")?.remove();
+      queueMicrotask(() => loadSessions(false).catch(() => {}));
+    }
+    updateDock();
     const foot = document.querySelector(".sidebar .side-foot");
     if (foot && !document.querySelector(".work-nav"))
       foot.insertAdjacentHTML(
@@ -70,7 +82,12 @@ export function installWorkbench(c) {
           timer = null;
           return;
         }
-        if (state.mode === "agents" && !loading)
+        if (
+          !loading &&
+          (state.mode === "agents" ||
+            chatOpen ||
+            sessions.some((s) => ["thinking", "queued"].includes(s.status)))
+        )
           loadSessions(false).catch(() => {});
       }, 2000);
   }
@@ -114,6 +131,7 @@ export function installWorkbench(c) {
     document
       .querySelectorAll(".mode-switch button")
       .forEach((b) => b.classList.toggle("active", b.dataset.action === name));
+    if (name === "agents") closeChat();
     c.renderInspector();
     renderScene();
   }
@@ -128,43 +146,168 @@ export function installWorkbench(c) {
       if (state.project?.id !== projectId) return;
       const changed = JSON.stringify(sessions) !== JSON.stringify(result);
       sessions = result;
+      updateDock();
       if (state.mode === "agents" && (force || changed)) renderAgents();
+      if (chatOpen && (force || changed))
+        renderAgents(document.querySelector("#kendrick-popover"));
     } finally {
       loading = false;
     }
   }
-  function renderAgents() {
-    const panel = document.querySelector("#inspector");
-    if (!panel) return;
+  function mood() {
     const active = sessions.some((s) =>
       ["queued", "thinking"].includes(s.status),
     );
-    const proposals = sessions.filter((s) => s.status === "proposed");
-    const latest = sessions[0];
-    panel.innerHTML = `<div class="inspector-title kendrick-title"><img class="kendrick ${active ? "thinking" : ""}" src="/kendrick/${active ? "thinking" : proposals.length ? "attention" : latest?.status === "applied" ? "success" : latest?.status === "failed" ? "offline" : "idle"}.svg" alt="Kendrick"><div><strong>Kendrick</strong><small>${active ? "Pensando…" : proposals.length ? "Proposta para revisar" : "Seu parceiro de design"}</small></div></div>${section("Conversar sobre o canvas", `<form id="kendrick-form"><label class="work-label">Provedor<select name="provider" aria-label="Provedor do Kendrick">${providerList.map((p) => `<option value="${p.id}" ${p.available ? "" : "disabled"}>${esc(p.name)}${p.available ? "" : " · não instalado"}</option>`).join("")}</select></label><p class="muted">${selected() ? `Seleção: ${esc(selected().name)}` : "Contexto: documento completo"}</p><textarea name="prompt" required maxlength="6000" aria-label="Mensagem para Kendrick" placeholder="O que você quer criar ou melhorar?"></textarea><button class="primary" ${active ? "disabled" : ""} type="submit">Enviar para Kendrick</button><small class="muted">O documento e a conversa são enviados ao provedor escolhido.</small></form>`)}<div id="conversation">${sessions
-      .slice()
-      .reverse()
-      .map(
-        (s) =>
-          `<article class="chat-entry"><strong>Você</strong><p>${esc(s.prompt)}</p><strong>Kendrick · ${esc(s.provider)}</strong><small class="muted">${esc(s.status)} · revisão ${s.baseRevision}</small>${s.message ? `<p>${esc(s.message)}</p>` : ""}${s.error ? `<p class="work-error">${esc(s.error)}</p>` : ""}${s.operations?.length ? `<details><summary>${s.operations.length} operações propostas</summary><pre>${esc(JSON.stringify(s.operations, null, 2))}</pre></details>` : ""}${s.status === "proposed" ? `<button class="primary" data-session="${s.id}" data-command="apply">Aplicar proposta</button><button class="text-button" data-session="${s.id}" data-command="cancel">Descartar</button>` : ["thinking", "queued"].includes(s.status) ? `<button class="text-button" data-session="${s.id}" data-command="cancel">Cancelar sessão</button>` : ""}</article>`,
-      )
-      .join("")}</div>`;
-    panel.querySelector("form").onsubmit = async (e) => {
+    return active
+      ? "thinking"
+      : sessions.some((s) => s.status === "proposed")
+        ? "attention"
+        : sessions[0]?.status === "applied"
+          ? "success"
+          : sessions[0]?.status === "failed"
+            ? "offline"
+            : "idle";
+  }
+  function updateDock() {
+    const launcher = document.querySelector(".kendrick-launcher");
+    if (launcher) {
+      launcher.setAttribute("aria-expanded", String(chatOpen));
+      launcher.classList.toggle("is-open", chatOpen);
+      const avatar = launcher.querySelector("kendrick-avatar");
+      if (avatar?.getAttribute("mood") !== mood())
+        avatar?.setAttribute("mood", mood());
+    }
+    const context = document.querySelector(
+      "#kendrick-popover .chat-context-label",
+    );
+    if (context) context.textContent = selected()?.name || "Canvas completo";
+    const scope = document.querySelector("#kendrick-popover .context-scope");
+    if (scope) scope.textContent = selected() ? "Seleção" : "Projeto";
+  }
+  function saveDraft(target) {
+    const form = target?.querySelector("[data-kendrick-form]");
+    if (form)
+      drafts.set(state.project?.id, {
+        prompt: form.elements.prompt.value,
+        provider: form.elements.provider.value,
+      });
+  }
+  function closeChat() {
+    const pop = document.querySelector("#kendrick-popover");
+    if (pop) {
+      saveDraft(pop);
+      pop.removeAttribute("id");
+      pop.setAttribute("inert", "");
+      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        const out = pop.animate(
+          [
+            { opacity: 1, transform: "translateY(0)" },
+            { opacity: 0, transform: "translateY(7px)" },
+          ],
+          { duration: 120, easing: "ease-in", fill: "forwards" },
+        );
+        out.finished.then(() => pop.remove()).catch(() => pop.remove());
+      } else pop.remove();
+    }
+    chatOpen = false;
+    updateDock();
+  }
+  async function toggleChat() {
+    if (chatOpen) {
+      closeChat();
+      document.querySelector(".kendrick-launcher")?.focus();
+      return;
+    }
+    if (state.mode === "agents") {
+      state.mode = "design";
+      c.renderInspector();
+    }
+    chatOpen = true;
+    const pop = document.createElement("section");
+    pop.id = "kendrick-popover";
+    pop.className = "kendrick-popover";
+    pop.setAttribute("role", "region");
+    pop.setAttribute("aria-label", "Conversa com Kendrick");
+    document.querySelector(".canvas-dock")?.append(pop);
+    renderAgents(pop);
+    enter(pop, "chat-open", { distance: 10, duration: 240 });
+    updateDock();
+    pop.querySelector("textarea")?.focus({ preventScroll: true });
+    await loadSessions(false);
+  }
+  function renderAgents(target = document.querySelector("#inspector")) {
+    if (!target) return;
+    const isPopover = target.id === "kendrick-popover",
+      active = sessions.some((s) => ["queued", "thinking"].includes(s.status)),
+      proposals = sessions.filter((s) => s.status === "proposed");
+    const focused = target.contains(document.activeElement)
+      ? document.activeElement?.name
+      : null;
+    saveDraft(target);
+    const draft = drafts.get(state.project.id) || {
+      prompt: "",
+      provider: providerList.find((p) => p.available)?.id || "codex",
+    };
+    const conversation = target.querySelector(".chat-conversation");
+    const pinned =
+      !conversation ||
+      conversation.scrollHeight -
+        conversation.scrollTop -
+        conversation.clientHeight <
+        45;
+    const scrollTop = conversation?.scrollTop || 0;
+    target.innerHTML = `<header class="kendrick-chat-heading"><kendrick-avatar mood="${mood()}"></kendrick-avatar><div class="chat-identity"><strong>Kendrick</strong><span>${active ? "Pensando no seu canvas…" : proposals.length ? "Alterações prontas para revisar" : "Seu parceiro de design"}</span></div>${isPopover ? '<button class="icon-button" data-work="close-chat" aria-label="Fechar conversa">×</button>' : ""}</header><div class="chat-context"><span class="context-mark">◇</span><span class="chat-context-label">${esc(selected()?.name || "Canvas completo")}</span><span class="context-scope">${selected() ? "Seleção" : "Projeto"}</span></div><div class="chat-conversation" aria-live="polite" aria-relevant="additions">${
+      sessions.length
+        ? sessions
+            .slice()
+            .reverse()
+            .map(
+              (s) =>
+                `<article class="chat-exchange"><div class="chat-user-message">${esc(s.prompt)}</div><div class="chat-answer"><span class="chat-answer-author">Kendrick <small>${esc(s.provider)}</small></span>${s.message ? `<p>${esc(s.message)}</p>` : s.status === "thinking" || s.status === "queued" ? '<div class="thinking-dots" aria-label="Preparando resposta"><i></i><i></i><i></i></div>' : ""}${s.error ? `<p class="work-error">${esc(s.error)}</p>` : ""}${s.operations?.length ? `<details class="proposal-details"><summary><span class="proposal-tag">PROPOSTA</span>${s.operations.length} ${s.operations.length === 1 ? "alteração" : "alterações"} no canvas</summary><pre>${esc(JSON.stringify(s.operations, null, 2))}</pre></details>` : ""}${s.status === "proposed" ? `<div class="proposal-actions"><button class="primary" data-session="${s.id}" data-command="apply">Aplicar proposta</button><button class="text-button" data-session="${s.id}" data-command="cancel">Descartar</button></div>` : s.status === "applied" ? '<span class="proposal-applied">✓ Aplicada no canvas</span>' : ["queued", "thinking"].includes(s.status) ? `<button class="text-button" data-session="${s.id}" data-command="cancel">Cancelar sessão</button>` : ""}</div></article>`,
+            )
+            .join("")
+        : `<div class="chat-welcome"><kendrick-avatar mood="listening"></kendrick-avatar><h3>Vamos dar forma à sua ideia.</h3><p>Selecione um elemento ou me conte o que você quer criar neste canvas.</p><div class="chat-suggestions"><button data-suggestion="Refine o espaçamento da seleção, preservando os tokens e o estilo atual.">Refinar seleção <span>↗</span></button><button data-suggestion="Proponha uma animação suave de entrada para o elemento selecionado.">Criar uma animação <span>↗</span></button></div></div>`
+    }</div><form data-kendrick-form class="kendrick-compose"><label class="sr-only" for="${isPopover ? "dock" : "panel"}-kendrick-message">Mensagem para Kendrick</label><textarea id="${isPopover ? "dock" : "panel"}-kendrick-message" name="prompt" required maxlength="6000" placeholder="Peça uma alteração…" aria-label="Mensagem para Kendrick">${esc(draft.prompt)}</textarea><div class="compose-controls"><label class="provider-picker"><span class="provider-dot"></span><select name="provider" aria-label="Provedor do Kendrick">${(providerList.length ? providerList : [{ id: "codex", name: "Codex", available: true }]).map((p) => `<option value="${p.id}" ${draft.provider === p.id ? "selected" : ""} ${p.available ? "" : "disabled"}>${esc(p.name)}${p.available ? "" : " · não instalado"}</option>`).join("")}</select></label><button class="send-kendrick" ${active ? "disabled" : ""} type="submit" aria-label="Enviar para Kendrick" title="Enviar · Enter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div><div class="compose-caption"><span>Enter envia · Shift + Enter quebra linha</span><span>Contexto do canvas</span></div></form><p class="chat-privacy">O contexto será enviado ao provedor escolhido.</p>`;
+    const form = target.querySelector("form");
+    form.oninput = () => saveDraft(target);
+    form.onchange = () => saveDraft(target);
+    form.elements.prompt.onkeydown = (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        if (!active) form.requestSubmit();
+      }
+    };
+    form.onsubmit = async (e) => {
       e.preventDefault();
-      const data = new FormData(e.target);
-      e.target.querySelector("button").disabled = true;
+      const data = new FormData(form);
+      form.querySelector("button[type=submit]").disabled = true;
       try {
         await api(`/api/projects/${state.project.id}/sessions`, {
           provider: data.get("provider"),
           prompt: data.get("prompt"),
           selectionId: state.selected,
         });
+        drafts.set(state.project.id, {
+          prompt: "",
+          provider: data.get("provider"),
+        });
+        form.elements.prompt.value = "";
         await loadSessions();
       } catch (err) {
         notice(err.message, true);
-        e.target.querySelector("button").disabled = false;
+        form.querySelector("button[type=submit]").disabled = false;
       }
     };
+    const next = target.querySelector(".chat-conversation");
+    next.scrollTop = pinned ? next.scrollHeight : scrollTop;
+    if (focused) {
+      form.elements[focused]?.focus({ preventScroll: true });
+      if (focused === "prompt") {
+        const input = form.elements.prompt;
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+    }
+    if (!isPopover) target.classList.add("agent-inspector");
   }
   function renderMotion() {
     const panel = document.querySelector("#inspector");
@@ -460,6 +603,8 @@ export function installWorkbench(c) {
   }
   function renderInspector() {
     mount();
+    if (state.mode !== "agents")
+      document.querySelector("#inspector")?.classList.remove("agent-inspector");
     if (state.mode === "agents") {
       if (!providerList.length)
         loadSessions().catch((e) => notice(e.message, true));
@@ -559,6 +704,14 @@ export function installWorkbench(c) {
       ].includes(name)
     ) {
       mode(name);
+      return true;
+    }
+    if (name === "toggle-chat") {
+      await toggleChat();
+      return true;
+    }
+    if (name === "close-chat") {
+      closeChat();
       return true;
     }
     if (name === "settings") {
@@ -823,24 +976,96 @@ export function installWorkbench(c) {
     return false;
   }
   function editAnimation(animation) {
+    const properties = {
+      opacity: "Opacidade",
+      x: "Posição X",
+      y: "Posição Y",
+      width: "Largura",
+      height: "Altura",
+      rotation: "Rotação",
+    };
+    const row = (time, key, value) =>
+      `<div class="keyframe-row"><label><span class="sr-only">Tempo em milissegundos</span><input name="kf-time" type="number" min="0" step="10" value="${time}" required><span class="field-unit">ms</span></label><select name="kf-property" aria-label="Propriedade do keyframe">${Object.entries(
+        properties,
+      )
+        .map(
+          ([id, label]) =>
+            `<option value="${id}" ${key === id ? "selected" : ""}>${label}</option>`,
+        )
+        .join(
+          "",
+        )}</select><input name="kf-value" type="number" step="any" aria-label="Valor do keyframe" value="${value}" required><button type="button" data-remove-keyframe aria-label="Remover keyframe">×</button></div>`;
     openForm(
       "Editar animação",
-      input("duration", "Duração (ms)", animation.duration, "number") +
-        `<label class="work-label">Easing<select name="easing">${["linear", "ease-in", "ease-out", "ease-in-out"].map((e) => `<option ${e === animation.easing ? "selected" : ""}>${e}</option>`).join("")}</select></label><label class="work-label">Keyframes (JSON)<textarea name="keyframes" rows="12">${esc(JSON.stringify(animation.keyframes, null, 2))}</textarea></label>`,
+      `<p>Defina os momentos e valores da animação. A duração e o easing controlam o movimento entre eles.</p><div class="motion-form-top">${input("duration", "Duração", animation.duration, "number")}<label class="work-label">Curva de movimento<select name="easing">${Object.entries(
+        {
+          linear: "Linear",
+          "ease-in": "Acelerar",
+          "ease-out": "Desacelerar",
+          "ease-in-out": "Suave",
+        },
+      )
+        .map(
+          ([key, label]) =>
+            `<option value="${key}" ${key === animation.easing ? "selected" : ""}>${label}</option>`,
+        )
+        .join(
+          "",
+        )}</select></label></div><div class="keyframe-heading"><span>Tempo</span><span>Propriedade</span><span>Valor</span></div><div id="keyframe-rows">${animation.keyframes.flatMap((f) => Object.entries(f.values).map(([key, value]) => row(f.time, key, value))).join("")}</div><button type="button" class="add-keyframe">+ Adicionar keyframe</button>`,
       (data) => {
-        const a = {
+        const times = data.getAll("kf-time"),
+          keys = data.getAll("kf-property"),
+          values = data.getAll("kf-value"),
+          frames = new Map();
+        times.forEach((value, index) => {
+          const time = Number(value);
+          if (!frames.has(time)) frames.set(time, { time, values: {} });
+          frames.get(time).values[keys[index]] = Number(values[index]);
+        });
+        const result = {
           ...animation,
           duration: Number(data.get("duration")),
           easing: data.get("easing"),
-          keyframes: JSON.parse(data.get("keyframes")),
+          keyframes: [...frames.values()].sort((a, b) => a.time - b.time),
         };
         return setData("animations", [
-          ...(current().animations || []).filter((v) => v.id !== a.id),
-          a,
+          ...(current().animations || []).filter((a) => a.id !== animation.id),
+          result,
         ]);
       },
     );
+    dialog.classList.add("motion-dialog");
+    const rows = dialog.querySelector("#keyframe-rows");
+    dialog.querySelector(".add-keyframe").onclick = () => {
+      const time = Number(dialog.querySelector('[name="duration"]').value);
+      rows.insertAdjacentHTML("beforeend", row(time, "opacity", 1));
+      rows.lastElementChild.querySelector("input").focus();
+    };
+    rows.onclick = (e) => {
+      const button = e.target.closest("[data-remove-keyframe]");
+      if (button) {
+        if (rows.children.length <= 2) {
+          notice("Mantenha ao menos dois keyframes.");
+          return;
+        }
+        button.closest(".keyframe-row").remove();
+      }
+    };
   }
+  document.addEventListener("keydown", (e) => {
+    if (
+      state.project &&
+      (e.ctrlKey || e.metaKey) &&
+      e.key.toLowerCase() === "k" &&
+      !dialog.open
+    ) {
+      e.preventDefault();
+      toggleChat().catch((err) => notice(err.message, true));
+    } else if (e.key === "Escape" && chatOpen && !dialog.open) {
+      e.preventDefault();
+      closeChat();
+    }
+  });
   document.addEventListener("change", (e) => {
     if (e.target.id === "page-select") {
       stopMotion();
@@ -849,12 +1074,28 @@ export function installWorkbench(c) {
       state.selectedIds = [];
       refresh();
       fit();
+      document
+        .querySelector("#canvas")
+        ?.animate([{ opacity: 0.15 }, { opacity: 1 }], {
+          duration: 220,
+          easing: "ease-out",
+        });
     }
   });
   document.addEventListener("click", async (e) => {
     const b = e.target.closest("button");
     if (!b || !state.project || b.disabled) return;
     try {
+      if (b.dataset.suggestion) {
+        const form = b
+          .closest("#kendrick-popover,#inspector")
+          ?.querySelector("[data-kendrick-form]");
+        if (form) {
+          form.elements.prompt.value = b.dataset.suggestion;
+          form.elements.prompt.focus();
+          saveDraft(b.closest("#kendrick-popover,#inspector"));
+        }
+      }
       if (b.dataset.work) await act(b.dataset.work);
       if (b.dataset.font && selected()?.type === "text")
         await commit([

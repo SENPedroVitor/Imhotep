@@ -241,9 +241,12 @@ export async function startServer({
           "/": "index.html",
           "/app.js": "app.js",
           "/style.css": "style.css",
+          "/interface.css": "interface.css",
           "/renderer.js": "renderer.js",
           "/icons.js": "icons.js",
           "/workbench.js": "workbench.js",
+          "/interface.js": "interface.js",
+          "/kendrick-art.js": "kendrick-art.js",
           "/motion.js": "motion.js",
           "/kendrick.svg": "kendrick.svg",
         };

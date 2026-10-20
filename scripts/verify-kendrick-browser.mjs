@@ -29,7 +29,9 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(base + "/?project=" + p.id);
   await page.locator(`[data-select="${p.document.nodes[0].id}"]`).click();
-  await page.getByRole("button", { name: "Kendrick", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Conversar com Kendrick", exact: true })
+    .click();
   await page
     .getByRole("combobox", { name: "Provedor do Kendrick" })
     .selectOption("codex");
@@ -53,7 +55,7 @@ try {
         ?.getAttribute("fill") === "#3366FF",
     p.document.nodes[0].id,
   );
-  await page.getByText("applied · revisão 0", { exact: false }).waitFor();
+  await page.getByText("Aplicada no canvas", { exact: false }).waitFor();
   await mkdir("artifacts", { recursive: true });
   await page.screenshot({ path: "artifacts/kendrick-connected.png" });
   assert.deepEqual(errors, []);

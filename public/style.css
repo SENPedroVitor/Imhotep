@@ -900,52 +900,6 @@ dialog.preview-dialog footer {
 .work-label textarea {
   min-height: 100px;
 }
-#kendrick-form textarea {
-  width: 100%;
-  min-height: 90px;
-  line-height: 1.5;
-  margin: 8px 0 12px;
-}
-#kendrick-form small {
-  display: block;
-  font-size: 9px;
-  line-height: 1.5;
-  margin: 12px 0;
-}
-.kendrick-title {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.kendrick {
-  width: 68px;
-  height: 68px;
-  object-fit: contain;
-}
-.kendrick.thinking {
-  animation: kendrick-think 1.8s ease-in-out infinite;
-}
-@keyframes kendrick-think {
-  50% {
-    transform: translateY(-5px) rotate(5deg);
-  }
-}
-.chat-entry {
-  padding: 18px;
-  border-bottom: 1px solid var(--stroke);
-  font-size: 11px;
-  line-height: 1.65;
-}
-.chat-entry p {
-  white-space: pre-wrap;
-}
-.chat-entry strong,
-.chat-entry small {
-  display: block;
-}
-.chat-entry details {
-  margin: 12px 0;
-}
 .work-error {
   color: #efad98;
 }

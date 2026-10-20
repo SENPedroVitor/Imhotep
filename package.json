@@ -17,7 +17,8 @@
     "start:tailscale": "node scripts/start-tailscale.mjs",
     "test:workbench": "node scripts/verify-workbench.mjs",
     "test:kendrick": "node scripts/verify-kendrick.mjs",
-    "test:kendrick:browser": "node scripts/verify-kendrick-browser.mjs"
+    "test:kendrick:browser": "node scripts/verify-kendrick-browser.mjs",
+    "test:interface": "node scripts/verify-interface.mjs"
   },
   "dependencies": {
     "fontkit": "^2.0.4",
